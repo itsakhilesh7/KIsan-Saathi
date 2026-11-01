@@ -1,0 +1,24 @@
+# Copy to config/pilot.yaml. Values below are PROPOSED DEFAULTS, not verified facts.
+# Day-1 task: confirm each market/commodity actually returns rows from the live data.gov.in mandi resource.
+# Change anything that does not. Application code must read this file; never hardcode these values.
+primary:
+  id: telangana-warangal
+  language: te-IN
+  state: Telangana
+  district: Warangal
+  latitude: 17.97      # VERIFY
+  longitude: 79.59     # VERIFY
+  timezone: Asia/Kolkata
+  markets: []          # fill with market names that exist in the live dataset
+  crops: [cotton, chilli, paddy]    # confirm with an agricultural reviewer
+optional_secondary:     # enable only after Phase 4 exit criteria pass
+  enabled: false
+  id: rajasthan-jaipur
+  language: hi-IN
+  state: Rajasthan
+  district: Jaipur
+  latitude: 26.91      # VERIFY
+  longitude: 75.79     # VERIFY
+  timezone: Asia/Kolkata
+  markets: []
+  crops: []

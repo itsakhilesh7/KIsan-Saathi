@@ -1,0 +1,2 @@
+{"id":"te_mandi_001","language":"te-IN","condition":"clean","file":"te_mandi_001.wav","reference_transcript":"<exact words spoken, in Telugu script>","expected_intent":"mandi_price_query","expected_slots":{"commodity":"cotton","district":"Warangal","market":null},"notes":"example row; replace with real recordings"}
+{"id":"hi_weather_001","language":"hi-IN","condition":"snr10","file":"hi_weather_001_snr10.wav","reference_transcript":"<exact words spoken, in Devanagari>","expected_intent":"weather_query","expected_slots":{"district":"Jaipur"},"notes":"example row"}

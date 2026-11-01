@@ -1,0 +1,49 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Data, logs, media (never commit private audio)
+logs/
+*.log
+*.sqlite
+*.db
+uploads/
+recordings/
+backend/data/raw/
+backend/data/index/
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.webm
+*.flac
+!evaluation/audio_samples/README.md
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+*.zip
