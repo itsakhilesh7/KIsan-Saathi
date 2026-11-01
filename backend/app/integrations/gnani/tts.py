@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from ...core.config import TTS_DEFAULT_LANG, TTS_URL, TTS_V25_VOICES, Settings, get_settings
+from ...core.http_client import get_http_client
 from .errors import GnaniRateLimitError, TTSError
 from .stt import normalize_language_code
 
@@ -109,14 +110,9 @@ async def synthesize(
         "Content-Type": "application/json",
     }
 
-    own_client = client is None
-    c = client or httpx.AsyncClient(timeout=90.0)
-    try:
-        r = await _post_with_retry(c, TTS_URL, headers=headers, json_data=payload)
-        content_type = r.headers.get("content-type", "")
-        if r.status_code != 200 or ("audio" not in content_type and "octet-stream" not in content_type):
-            raise TTSError(f"Gnani TTS failed ({r.status_code}, content-type: {content_type}): {r.text[:300]}")
-        return r.content
-    finally:
-        if own_client:
-            await c.aclose()
+    c = client or get_http_client()
+    r = await _post_with_retry(c, TTS_URL, headers=headers, json_data=payload)
+    content_type = r.headers.get("content-type", "")
+    if r.status_code != 200 or ("audio" not in content_type and "octet-stream" not in content_type):
+        raise TTSError(f"Gnani TTS failed ({r.status_code}, content-type: {content_type}): {r.text[:300]}")
+    return r.content

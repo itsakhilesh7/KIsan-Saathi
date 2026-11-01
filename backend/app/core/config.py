@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     ALLOW_CHEMICAL_DETAILS: bool = False
     RATE_LIMIT_PER_MIN: int = 20
     SEND_TEXT_COPY: bool = True
+    # By default False per privacy rules (rules.md). Only set to True for offline consented eval debugging.
+    STORE_RAW_TRANSCRIPTS: bool = False
 
     # ---- Pilot ----
     PILOT_CONFIG_PATH: str = "config/pilot.yaml"
@@ -55,6 +57,7 @@ class Settings(BaseSettings):
     STT_LANGUAGE: str = "indic-auto"
     TTS_MODEL: str = "timbre-v2.5"
     TTS_V3_VOICE: str = "Shivani"
+    TTS_DEFAULT_LANG: str = TTS_DEFAULT_LANG
 
     # ---- LLM (OpenAI-compatible) ----
     LLM_PROVIDER: str = "openai_compatible"
