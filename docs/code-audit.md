@@ -178,24 +178,26 @@ Existing tests: 5 tests in `existing-code/tests/test_webhook.py`:
 
 ---
 
-## 5. Migration Plan
+## 5. Migration Plan & Remediations Applied (Phase 1.5)
 
 1. **Step 1: Scaffold Target Directory Hierarchy:**
-   Create full directory structure from `architecture.md` Section 5 with README/gitkeep files for future phases.
-2. **Step 2: Core Configuration & Logging:**
-   Implement `backend/app/core/config.py` with typed Pydantic `Settings`, reading all `.env.example` keys, loading `pilot.yaml`, and raising warnings if unconfirmed. Implement `backend/app/core/logging.py` (structured JSON, phone salting) and `backend/app/core/security.py`.
-3. **Step 3: Data Schemas:**
-   Implement Pydantic schemas in `backend/app/schemas/` (`intent.py`, `evidence.py`, `conversation.py`, `common.py`).
-4. **Step 4: Integrations Layer:**
-   Port and harden Gnani STT/TTS in `backend/app/integrations/gnani/`, OpenAI-compatible LLM in `backend/app/integrations/llm/`.
-5. **Step 5: WhatsApp Channel & Persistence:**
-   Port WhatsApp webhook and client into `backend/app/channels/whatsapp/` with persistent SQLite deduplication and production secret validation.
-6. **Step 6: Audio Service & Pipeline:**
-   Port audio conversion and chunking to `backend/app/services/audio_service.py` and orchestration to `backend/app/services/`.
-7. **Step 7: Routes & App Assembly:**
-   Expose `/api/health`, `/webhook`, and voice query routes in `backend/app/main.py`.
-8. **Step 8: Unit & Live Test Migration:**
-   Move existing 5 webhook tests to `backend/tests/unit/test_webhook.py`; add unit tests for config, language normalization, schemas, and live smoke tests (skipped without keys) in `backend/tests/live/`.
-9. **Step 9: Verification:**
-   Run full test suite (`pytest`) and linter (`ruff`). Keep `existing-code/` untouched as an immutable reference snapshot.
+   Created full directory structure from `architecture.md` Section 5 with README/gitkeep files for future phases.
+2. **Step 2: Core Configuration & Lifespan Validation:**
+   Implemented `backend/app/core/config.py` with typed Pydantic `Settings`, reading all `.env.example` keys, loading `pilot.yaml`, and raising warnings if unconfirmed. Added `validate_production_settings` in `main.py` lifespan to fail fast if `META_APP_SECRET` is missing, or if `PHONE_HASH_SALT` / `WHATSAPP_VERIFY_TOKEN` use default values.
+3. **Step 3: Outbound HTTP Client Pooling:**
+   Created `backend/app/core/http_client.py` providing a shared `httpx.AsyncClient` instance with connection pooling (max 20 keepalive, 50 connections) managed during application lifespan and reused across WhatsApp, Gnani, and LLM adapters.
+4. **Step 4: Data Schemas:**
+   Implemented Pydantic schemas in `backend/app/schemas/` (`intent.py`, `evidence.py`, `conversation.py`, `common.py`).
+5. **Step 5: Integrations Layer:**
+   Ported and hardened Gnani STT/TTS in `backend/app/integrations/gnani/`, language normalization layer, OpenAI-compatible LLM in `backend/app/integrations/llm/` with echo fallback and model disclosure.
+6. **Step 6: WhatsApp Channel & Persistence:**
+   Ported WhatsApp webhook and client into `backend/app/channels/whatsapp/`. Added persistent SQLite deduplication (`SQLiteDeduplicationRepository`) surviving restarts, and streaming media size guard (`AUDIO_MAX_MB`).
+7. **Step 7: Audio Service & Limits:**
+   Ported audio conversion and chunking to `backend/app/services/audio_service.py`. Enforced `validate_media_type` on incoming MIME types and `AUDIO_MAX_SECONDS` before STT.
+8. **Step 8: Persistent Non-Blocking Audit Events:**
+   Implemented `backend/app/repositories/events.py` logging to SQLite and JSONL non-blockingly. Added `STORE_RAW_TRANSCRIPTS: bool = False` (transcripts omitted by default per privacy rules).
+9. **Step 9: Language-Aware Prompts:**
+   Standardized `EMPTY_TRANSCRIPT_MESSAGES`, `FALLBACK_MESSAGES` (referencing 1551 helpline), `AUDIO_TOO_LONG_MESSAGES`, and `UNSUPPORTED_MEDIA_MESSAGES` across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+10. **Step 10: Unit & Live Test Verification:**
+   Expanded test suite to 24 unit tests (100% passing) and 2 live smoke tests (skipped without keys). `existing-code/` remains untouched as an immutable reference snapshot.
 

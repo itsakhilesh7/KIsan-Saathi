@@ -17,11 +17,16 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ### What works right now
 - Backend FastAPI app with Request-ID middleware, structured JSON logging, and `/api/health`.
 - Hardened WhatsApp webhook with constant-time HMAC-SHA256 signature checking and SQLite deduplication.
+- Production startup fail-fast checks (rejects empty `META_APP_SECRET` and default `PHONE_HASH_SALT` / `WHATSAPP_VERIFY_TOKEN`).
+- Outbound HTTP connection pooling via shared `httpx.AsyncClient` (`core/http_client.py`) across WhatsApp, Gnani, and LLM adapters.
+- Audio limits: streaming download size guard (`AUDIO_MAX_MB`), duration limit check (`AUDIO_MAX_SECONDS`), and MIME type allowlist.
+- Persistent non-blocking audit events (`repositories/events.py` in SQLite + JSONL); transcripts omitted by default (`STORE_RAW_TRANSCRIPTS=false`).
+- Fully language-aware prompts (empty transcript, audio too long, fallbacks) across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
 - Typed `Settings` reading all `.env.example` keys; startup warning on unconfirmed pilot.
 - Gnani Prisma STT & Timbre TTS adapters with explicit timeouts, 429/5xx retries, and language normalization.
 - OpenAI-compatible LLM adapter with zero-dependency echo mode and mandatory model name disclosure.
 - Audio transcoding & chunking service (`to_wav16k`, `wav_to_ogg_opus`, `split_wav`).
-- To run: `pytest backend/tests/` (16 unit tests passing, 2 live smoke tests skipped without keys).
+- To run: `pytest backend/tests/` (unit tests passing, live smoke tests skipped without keys).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -32,7 +37,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 | data.gov.in | MOCKED | Schema placeholder ready; requires `DATA_GOV_API_KEY` live check. |
 | Open-Meteo | MOCKED | Schema placeholder ready; implementation in Phase 3. |
 | Evon / LLM | MOCKED | Tested locally in echo mode; live completions require `LLM_BASE_URL`. |
-| Persistence (SQLite) | VERIFIED LIVE | `data/dedup.sqlite3` initialized and verified across tests. |
+| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup and events tables verified across unit tests with `tmp_path`. |
 
 - **Known issues and risks:** Windows loopback sockets in sandbox mode block synchronous `TestClient` unless running with sandbox bypass or live network. Prisma STT live language code format is unverified (`format unverified` normalization layer in place).
 - **Needs from developer:** Fill `GNANI_API_KEY`, `WHATSAPP_*` credentials in `backend/.env` per `docs/MANUAL_TASKS.md`.
@@ -42,6 +47,27 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ---
 
 ## LOG
+
+### [2026-11-02 00:08] Phase 1.5 Hardening Pass Complete
+- **Goal and phase:** Phase 1.5 short hardening pass before Phase 2.
+- **What changed:**
+  - Resolved `TTS_DEFAULT_LANG` bug: added field to `Settings` making it single source of truth; fixed `AttributeError` when STT returns `None`.
+  - Added unit test for `SQLiteDeduplicationRepository` using `tmp_path` verifying initial call `False`, repeat call `True`, and persistence across new instances.
+  - Added production fail-fast check in `lifespan`: raises `RuntimeError` at startup if `META_APP_SECRET` is empty, or if `PHONE_HASH_SALT` / `WHATSAPP_VERIFY_TOKEN` use default placeholder values. Added 4 unit tests.
+  - Implemented shared outbound `httpx.AsyncClient` connection pool in `backend/app/core/http_client.py` initialized during lifespan and reused by WhatsApp client, Gnani STT/TTS, and LLM adapters.
+  - Enforced audio limits: streaming download size guard (`AUDIO_MAX_MB`), audio duration check (`AUDIO_MAX_SECONDS`) before STT, and MIME validation (`validate_media_type`). Added unit tests.
+  - Implemented persistent event logging in `backend/app/repositories/events.py` (SQLite + JSONL) with non-blocking async execution. Added `STORE_RAW_TRANSCRIPTS: bool = False` setting (transcripts stored only if explicitly enabled).
+  - Language-aware prompts: added `EMPTY_TRANSCRIPT_MESSAGES`, `FALLBACK_MESSAGES` (with 1551 advice), `AUDIO_TOO_LONG_MESSAGES`, and `UNSUPPORTED_MEDIA_MESSAGES` covering `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+  - Removed local absolute path from `README.md`. Confirmed GitHub repository is public via unauthenticated curl check.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_tts_default_lang.py`: reproduced failure, then passed after fix.
+  - `pytest backend/tests/unit/test_deduplication.py`: passed (1 passed in 0.30s).
+  - `pytest backend/tests/unit/test_lifespan_production.py`: passed (4 passed in 1.02s).
+  - `pytest backend/tests/unit/test_audio_limits.py`: passed (2 passed in 1.00s).
+  - `pytest backend/tests/unit/test_orchestrator_hardening.py`: passed (3 passed in 1.22s).
+  - `pytest backend/tests/unit/test_events_repository.py`: passed (1 passed in 0.21s).
+- **Tests:** 28 unit tests passed, 2 live skipped.
+- **Git commit hash and message:** pending commit for Phase 1.5.
 
 ### [2026-11-01 23:50] Remote Repository Linked and Pushed to GitHub
 - **Goal and phase:** Remote repository setup (Phase 0/1 milestone completion).

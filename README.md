@@ -130,7 +130,7 @@ All commands must be executed in **Windows PowerShell**.
 ### 1. Environment & Dependencies
 ```powershell
 # Navigate to repository root
-cd C:\Users\akhil\.gemini\antigravity\scratch\kisan-saathi
+cd path\to\kisan-saathi
 
 # Create and activate Python virtual environment
 python -m venv .venv
