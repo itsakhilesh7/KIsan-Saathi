@@ -27,11 +27,13 @@ coverage/
 logs/
 *.log
 *.sqlite
+*.sqlite3
 *.db
 uploads/
 recordings/
 backend/data/raw/
 backend/data/index/
+data/*.sqlite*
 *.wav
 *.mp3
 *.m4a
