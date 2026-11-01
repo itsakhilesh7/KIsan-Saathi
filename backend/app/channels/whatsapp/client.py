@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from ...core.config import Settings, get_settings
+from ...core.http_client import get_http_client
 
 log = logging.getLogger("whatsapp.client")
 
@@ -56,34 +57,38 @@ async def download_media(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> bytes:
-    """Downloads voice note media from WhatsApp Graph API, validating size."""
+    """Downloads voice note media from WhatsApp Graph API, validating size via streaming."""
     cfg = settings or get_settings()
-    own_client = client is None
-    c = client or httpx.AsyncClient(timeout=60.0)
-    try:
-        # Step 1: Query media metadata to get download URL
-        meta_url = f"{cfg.wa_graph}/{media_id}"
-        meta_res = await _request_with_retry(c, "GET", meta_url, headers=_auth_headers(cfg))
-        meta_data = meta_res.json()
-        file_url = meta_data.get("url")
-        if not file_url:
-            raise WhatsAppAPIError(f"No download URL in media metadata: {meta_data}")
+    c = client or get_http_client()
 
-        # Check file size if available in metadata
-        file_size = meta_data.get("file_size", 0)
-        max_bytes = cfg.AUDIO_MAX_MB * 1024 * 1024
-        if file_size and file_size > max_bytes:
-            raise WhatsAppAPIError(f"Audio media size ({file_size} bytes) exceeds limit ({max_bytes} bytes).")
+    # Step 1: Query media metadata to get download URL
+    meta_url = f"{cfg.wa_graph}/{media_id}"
+    meta_res = await _request_with_retry(c, "GET", meta_url, headers=_auth_headers(cfg))
+    meta_data = meta_res.json()
+    file_url = meta_data.get("url")
+    if not file_url:
+        raise WhatsAppAPIError(f"No download URL in media metadata: {meta_data}")
 
-        # Step 2: Download raw binary media
-        file_res = await _request_with_retry(c, "GET", file_url, headers=_auth_headers(cfg))
-        content = file_res.content
-        if len(content) > max_bytes:
-            raise WhatsAppAPIError(f"Downloaded audio size ({len(content)} bytes) exceeds limit ({max_bytes} bytes).")
-        return content
-    finally:
-        if own_client:
-            await c.aclose()
+    # Check file size if available in metadata
+    file_size = meta_data.get("file_size", 0)
+    max_bytes = cfg.AUDIO_MAX_MB * 1024 * 1024
+    if file_size and file_size > max_bytes:
+        raise WhatsAppAPIError(f"Audio media size ({file_size} bytes) exceeds limit ({max_bytes} bytes).")
+
+    # Step 2: Download raw binary media in streaming mode with size guard
+    chunks: list[bytes] = []
+    downloaded = 0
+    async with c.stream("GET", file_url, headers=_auth_headers(cfg)) as stream_resp:
+        stream_resp.raise_for_status()
+        async for chunk in stream_resp.aiter_bytes(chunk_size=16384):
+            downloaded += len(chunk)
+            if downloaded > max_bytes:
+                raise WhatsAppAPIError(
+                    f"Audio media size exceeds maximum allowed limit of {cfg.AUDIO_MAX_MB} MB."
+                )
+            chunks.append(chunk)
+
+    return b"".join(chunks)
 
 
 async def upload_audio(
@@ -93,19 +98,14 @@ async def upload_audio(
 ) -> str:
     """Uploads OGG/Opus audio to WhatsApp Cloud API, returning the media ID."""
     cfg = settings or get_settings()
-    own_client = client is None
-    c = client or httpx.AsyncClient(timeout=60.0)
-    try:
-        url = f"{cfg.wa_graph}/{cfg.WHATSAPP_PHONE_NUMBER_ID}/media"
-        headers = _auth_headers(cfg)
-        data = {"messaging_product": "whatsapp", "type": "audio/ogg"}
-        files = {"file": ("reply.ogg", ogg_bytes, "audio/ogg")}
+    c = client or get_http_client()
+    url = f"{cfg.wa_graph}/{cfg.WHATSAPP_PHONE_NUMBER_ID}/media"
+    headers = _auth_headers(cfg)
+    data = {"messaging_product": "whatsapp", "type": "audio/ogg"}
+    files = {"file": ("reply.ogg", ogg_bytes, "audio/ogg")}
 
-        res = await _request_with_retry(c, "POST", url, headers=headers, data=data, files=files)
-        return res.json()["id"]
-    finally:
-        if own_client:
-            await c.aclose()
+    res = await _request_with_retry(c, "POST", url, headers=headers, data=data, files=files)
+    return res.json()["id"]
 
 
 async def _send(
@@ -115,21 +115,16 @@ async def _send(
 ) -> dict[str, Any]:
     """Sends a message payload via WhatsApp Graph API."""
     cfg = settings or get_settings()
-    own_client = client is None
-    c = client or httpx.AsyncClient(timeout=30.0)
-    try:
-        url = f"{cfg.wa_graph}/{cfg.WHATSAPP_PHONE_NUMBER_ID}/messages"
-        headers = {**_auth_headers(cfg), "Content-Type": "application/json"}
-        full_payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            **payload,
-        }
-        res = await _request_with_retry(c, "POST", url, headers=headers, json=full_payload)
-        return res.json()
-    finally:
-        if own_client:
-            await c.aclose()
+    c = client or get_http_client()
+    url = f"{cfg.wa_graph}/{cfg.WHATSAPP_PHONE_NUMBER_ID}/messages"
+    headers = {**_auth_headers(cfg), "Content-Type": "application/json"}
+    full_payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        **payload,
+    }
+    res = await _request_with_retry(c, "POST", url, headers=headers, json=full_payload)
+    return res.json()
 
 
 async def send_text(

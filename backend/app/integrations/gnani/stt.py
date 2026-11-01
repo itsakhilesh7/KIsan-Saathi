@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from ...core.config import MAX_STT_SECONDS, STT_URL, Settings, get_settings
+from ...core.http_client import get_http_client
 from .errors import GnaniRateLimitError, STTError
 
 log = logging.getLogger("gnani.stt")
@@ -115,28 +116,24 @@ async def transcribe_short(
     headers = _get_headers(cfg)
     files = {"audio_file": (os.path.basename(wav_path), audio_bytes, "audio/wav")}
 
-    own_client = client is None
-    c = client or httpx.AsyncClient(timeout=60.0)
+    c = client or get_http_client()
+    r = await _post_with_retry(c, STT_URL, headers=headers, data=form_data, files=files)
     try:
-        r = await _post_with_retry(c, STT_URL, headers=headers, data=form_data, files=files)
-        try:
-            body = r.json()
-        except ValueError:
-            raise STTError(f"Gnani STT returned non-JSON response ({r.status_code}): {r.text[:200]}")
+        body = r.json()
+    except ValueError:
+        raise STTError(f"Gnani STT returned non-JSON response ({r.status_code}): {r.text[:200]}")
 
-        if r.status_code != 200 or not body.get("success", False):
-            raise STTError(f"Gnani STT request failed ({r.status_code}): {body}")
+    if r.status_code != 200 or not body.get("success", False):
+        raise STTError(f"Gnani STT request failed ({r.status_code}): {body}")
 
-        return body
-    finally:
-        if own_client:
-            await c.aclose()
+    return body
 
 
 async def transcribe(
     wav_path: str,
     language_code: str | None = None,
     settings: Settings | None = None,
+    client: httpx.AsyncClient | None = None,
 ) -> dict[str, Any]:
     """Transcribes audio, chunking if necessary (using audio_service).
 
@@ -150,38 +147,38 @@ async def transcribe(
 
     cfg = settings or get_settings()
     duration = await asyncio.to_thread(audio_service.get_duration, wav_path)
+    c = client or get_http_client()
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        if duration <= MAX_STT_SECONDS:
-            res = await transcribe_short(wav_path, language_code, settings=cfg, client=client)
-            raw_lang = res.get("detected_language_code")
-            return {
-                "transcript": res.get("transcript", "").strip(),
-                "detected_language_code": normalize_language_code(raw_lang),
-                "raw_language_code": raw_lang,
-                "chunks": 1,
-            }
-
-        # Chunk audio if longer than cutoff
-        chunks = await asyncio.to_thread(audio_service.split_wav, wav_path, MAX_STT_SECONDS)
-        parts: list[str] = []
-        raw_lang = None
-        for chunk in chunks:
-            try:
-                res = await transcribe_short(chunk, language_code, settings=cfg, client=client)
-                text = res.get("transcript", "").strip()
-                if text:
-                    parts.append(text)
-                if not raw_lang:
-                    raw_lang = res.get("detected_language_code")
-            finally:
-                if os.path.exists(chunk) and chunk != wav_path:
-                    try:
-                        os.remove(chunk)
-                    except OSError:
-                        pass
-
+    if duration <= MAX_STT_SECONDS:
+        res = await transcribe_short(wav_path, language_code, settings=cfg, client=c)
+        raw_lang = res.get("detected_language_code")
         return {
+            "transcript": res.get("transcript", "").strip(),
+            "detected_language_code": normalize_language_code(raw_lang),
+            "raw_language_code": raw_lang,
+            "chunks": 1,
+        }
+
+    # Chunk audio if longer than cutoff
+    chunks = await asyncio.to_thread(audio_service.split_wav, wav_path, MAX_STT_SECONDS)
+    parts: list[str] = []
+    raw_lang = None
+    for chunk in chunks:
+        try:
+            res = await transcribe_short(chunk, language_code, settings=cfg, client=c)
+            text = res.get("transcript", "").strip()
+            if text:
+                parts.append(text)
+            if not raw_lang:
+                raw_lang = res.get("detected_language_code")
+        finally:
+            if os.path.exists(chunk) and chunk != wav_path:
+                try:
+                    os.remove(chunk)
+                except OSError:
+                    pass
+
+    return {
             "transcript": " ".join(parts).strip(),
             "detected_language_code": normalize_language_code(raw_lang),
             "raw_language_code": raw_lang,

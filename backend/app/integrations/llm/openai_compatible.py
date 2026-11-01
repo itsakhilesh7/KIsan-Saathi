@@ -10,6 +10,7 @@ import logging
 import httpx
 
 from ...core.config import Settings, get_settings
+from ...core.http_client import get_http_client
 from .base import LLMAdapter
 
 log = logging.getLogger("llm.openai_compatible")
@@ -74,24 +75,24 @@ class OpenAICompatibleLLM(LLMAdapter):
 
         # Bounded retry on 429 and 5xx
         last_err: Exception | None = None
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            for attempt in range(3):
-                try:
-                    r = await client.post(endpoint, headers=headers, json=body)
-                    if r.status_code in (429, 500, 502, 503, 504):
-                        log.warning("LLM request failed with %d (attempt %d/3)", r.status_code, attempt + 1)
-                        last_err = LLMError(f"LLM API error {r.status_code}: {r.text[:200]}")
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    if r.status_code != 200:
-                        raise LLMError(f"LLM error {r.status_code}: {r.text[:300]}")
-
-                    data = r.json()
-                    content = data["choices"][0]["message"]["content"].strip()
-                    return content, disclosed_name
-                except httpx.TransportError as e:
-                    log.warning("LLM transport error (attempt %d/3): %s", attempt + 1, e)
-                    last_err = LLMError(f"Transport error connecting to LLM: {e}")
+        c = get_http_client()
+        for attempt in range(3):
+            try:
+                r = await c.post(endpoint, headers=headers, json=body)
+                if r.status_code in (429, 500, 502, 503, 504):
+                    log.warning("LLM request failed with %d (attempt %d/3)", r.status_code, attempt + 1)
+                    last_err = LLMError(f"LLM API error {r.status_code}: {r.text[:200]}")
                     await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                if r.status_code != 200:
+                    raise LLMError(f"LLM error {r.status_code}: {r.text[:300]}")
+
+                data = r.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                return content, disclosed_name
+            except httpx.TransportError as e:
+                log.warning("LLM transport error (attempt %d/3): %s", attempt + 1, e)
+                last_err = LLMError(f"Transport error connecting to LLM: {e}")
+                await asyncio.sleep(1.5 * (attempt + 1))
 
         raise last_err or LLMError("LLM failed after 3 retries.")
