@@ -18,10 +18,26 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .api.routes.health import router as health_router
 from .api.routes.voice import router as voice_router
 from .channels.whatsapp.webhook import router as whatsapp_router
-from .core.config import get_settings
+from .core.config import Settings, get_settings
+from .core.http_client import close_http_client, get_http_client
 from .core.logging import set_request_id, setup_logging
 
 log = logging.getLogger("main")
+
+
+def validate_production_settings(settings: Settings) -> None:
+    """Fails fast if critical production secrets are missing or use default values."""
+    if not settings.is_production:
+        return
+
+    if not settings.META_APP_SECRET.strip():
+        raise RuntimeError("Production startup failed: META_APP_SECRET is required.")
+
+    if settings.PHONE_HASH_SALT.strip() in ("", "change_me"):
+        raise RuntimeError("Production startup failed: PHONE_HASH_SALT must be changed from default.")
+
+    if settings.WHATSAPP_VERIFY_TOKEN.strip() in ("", "change_me_random_string"):
+        raise RuntimeError("Production startup failed: WHATSAPP_VERIFY_TOKEN must be changed from default.")
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -40,6 +56,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan context for startup checks and teardown."""
     setup_logging()
     settings = get_settings()
+    validate_production_settings(settings)
+
+    # Initialize shared outbound HTTP client pool
+    get_http_client()
+
     log.info(
         "Kisan Saathi service starting up",
         extra={
@@ -50,6 +71,7 @@ async def lifespan(app: FastAPI):
         },
     )
     yield
+    await close_http_client()
     log.info("Kisan Saathi service shutting down")
 
 
