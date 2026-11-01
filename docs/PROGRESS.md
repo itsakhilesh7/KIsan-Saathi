@@ -43,6 +43,16 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
+### [2026-11-01 23:50] Remote Repository Linked and Pushed to GitHub
+- **Goal and phase:** Remote repository setup (Phase 0/1 milestone completion).
+- **What changed:** Added remote `origin` (`https://github.com/itsakhilesh7/KIsan-Saathi.git`), renamed local branch to `main`, and pushed initial commit history.
+- **Commands run and their real results:**
+  - `git branch -M main`: successfully switched to `main`.
+  - `git remote add origin https://github.com/itsakhilesh7/KIsan-Saathi.git`: added origin remote.
+  - `git push -u origin main`: successfully pushed `main -> main`. Tracking set up.
+- **Tests:** 16 unit tests passing, 2 live skipped.
+- **Git commit hash and message:** `b0412f8` ("chore: normalize line endings across repo").
+
 ### [2026-11-01 23:40] Phase 0 & Phase 1 Backend Foundation & Migration Complete
 - **Goal and phase:** Phase 0 (access, decisions, audit) and Phase 1 (backend foundation & starter code migration).
 - **What changed:**
