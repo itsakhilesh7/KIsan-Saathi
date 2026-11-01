@@ -2,7 +2,7 @@
 
 Coordinates: WhatsApp media in -> Audio normalize -> Gnani Prisma STT
 -> LLM reasoning -> Gnani Timbre TTS -> WhatsApp voice out.
-Logs per-stage latency without blocking async event loops.
+Logs per-stage latency and events without blocking async event loops.
 """
 
 import asyncio
@@ -15,21 +15,45 @@ from typing import Any
 from ..channels.whatsapp import client as wa_client
 from ..core.config import Settings, get_settings
 from ..core.logging import get_request_id, hash_phone
+from ..core.security import validate_media_type
 from ..integrations.gnani import stt as gnani_stt
 from ..integrations.gnani import tts as gnani_tts
 from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
+from ..repositories.events import EventRepository
 from . import audio_service
 
 log = logging.getLogger("orchestrator")
 
-FALLBACK_MESSAGES: dict[str, str] = {
-    "hi-IN": "माफ़ कीजिए, अभी जवाब देने में दिक्कत हो रही है। कृपया थोड़ी देर बाद फिर कोशिश करें।",
-    "te-IN": "క్షమించండి, ఇప్పుడు సమాధానం ఇవ్వడంలో సమస్య ఉంది. దయచేసి కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించండి.",
-    "en-IN": "Sorry, I am having trouble answering right now. Please try again in a little while.",
-    "hi-en": "Sorry, abhi answer dene me issue ho raha hai. Please thodi der baad dobara try karein.",
+# Language-aware messages across all 4 supported/tested languages
+EMPTY_TRANSCRIPT_MESSAGES: dict[str, str] = {
+    "te-IN": "క్షమించండి, మీ వాయిస్ స్పష్టంగా వినబడలేదు. దయచేసి మళ్లీ చెప్పండి.",
+    "hi-IN": "माफ़ कीजिए, आवाज़ साफ़ नहीं आई। कृपया दोबारा बोलिए।",
+    "en-IN": "Sorry, I could not hear that clearly. Please try speaking again.",
+    "hi-en": "Sorry, aapki aawaz clear nahi aayi. Please dobara boliye.",
 }
 
-NOT_SUPPORTED_MESSAGE = "Please send a voice note or a text message."
+FALLBACK_MESSAGES: dict[str, str] = {
+    "te-IN": "క్షమించండి, ఇప్పుడు సమాధానం ఇవ్వడంలో సమస్య ఉంది. దయచేసి కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించండి లేదా 1551 కి కాల్ చేయండి.",
+    "hi-IN": "माफ़ कीजिए, अभी जवाब देने में दिक्कत हो रही है। कृपया थोड़ी देर बाद फिर कोशिश करें या 1551 पर कॉल करें।",
+    "en-IN": "Sorry, I am having trouble answering right now. Please try again in a little while or call 1551.",
+    "hi-en": "Sorry, abhi answer dene me issue ho raha hai. Please thodi der baad dobara try karein ya 1551 par call karein.",
+}
+
+AUDIO_TOO_LONG_MESSAGES: dict[str, str] = {
+    "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 30 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.",
+    "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम 30 सेकंड)। कृपया छोटा संदेश भेजें।",
+    "en-IN": "Voice note is too long (maximum 30 seconds). Please send a shorter audio message.",
+    "hi-en": "Voice note zyada lamba hai (limit 30 seconds). Please chhota audio message bhejein.",
+}
+
+UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {
+    "te-IN": "సహాయం కోసం దయచేసి వాయిస్ సందేశం లేదా టెక్స్ట్ మెసేజ్ పంపండి.",
+    "hi-IN": "सहायता के लिए कृपया वॉयस संदेश या टेक्स्ट मैसेज भेजें।",
+    "en-IN": "Please send a voice note or a text message for assistance.",
+    "hi-en": "Help ke liye please audio voice note ya text message bhejein.",
+}
+
+_event_repo = EventRepository()
 
 
 async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
@@ -40,10 +64,24 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
     sender_phone = msg.get("from") or ""
     phone_hash = hash_phone(sender_phone, settings.PHONE_HASH_SALT)
     media_id = msg.get("media_id")
+    mime_type = msg.get("mime_type")
     req_id = get_request_id()
 
     if not media_id or not sender_phone:
         log.warning("Voice message missing media_id or sender phone")
+        return
+
+    # Audio limit check 1: Validate media type if provided in webhook metadata
+    if mime_type and not validate_media_type(mime_type):
+        log.warning("Rejected unsupported media MIME type '%s' from user=%s", mime_type, phone_hash)
+        unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(settings.TTS_DEFAULT_LANG, UNSUPPORTED_MEDIA_MESSAGES["en-IN"])
+        await wa_client.send_text(sender_phone, unsupported_msg, settings=settings)
+        await _event_repo.log_event({
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "channel": "whatsapp",
+            "status": "rejected_mime",
+        })
         return
 
     try:
@@ -53,7 +91,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             out_wav = os.path.join(tmp_dir, "out.wav")
             out_ogg = os.path.join(tmp_dir, "out.ogg")
 
-            # Stage 1: Download & convert incoming audio
+            # Stage 1: Download & convert incoming audio (enforces AUDIO_MAX_MB)
             s = time.perf_counter()
             audio_bytes = await wa_client.download_media(media_id, settings=settings)
             with open(in_ogg, "wb") as f:
@@ -61,6 +99,21 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
 
             await asyncio.to_thread(audio_service.to_wav16k, in_ogg, in_wav)
             timings["download_convert"] = round(time.perf_counter() - s, 2)
+
+            # Audio limit check 2: Validate duration before calling STT (enforces AUDIO_MAX_SECONDS)
+            duration = await asyncio.to_thread(audio_service.get_duration, in_wav)
+            if duration > settings.AUDIO_MAX_SECONDS:
+                log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, settings.AUDIO_MAX_SECONDS, phone_hash)
+                too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(settings.TTS_DEFAULT_LANG, AUDIO_TOO_LONG_MESSAGES["en-IN"])
+                await wa_client.send_text(sender_phone, too_long_msg, settings=settings)
+                await _event_repo.log_event({
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "channel": "whatsapp",
+                    "status": "rejected_duration",
+                    "timings": timings,
+                })
+                return
 
             # Stage 2: Prisma Speech-to-Text
             s = time.perf_counter()
@@ -72,12 +125,16 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
 
             if not transcript:
                 log.info("Empty transcript returned for user=%s", phone_hash)
-                clarification = (
-                    "క్షమించండి, మీ వాయిస్ స్పష్టంగా వినబడలేదు. దయచేసి మళ్లీ చెప్పండి."
-                    if detected_lang == "te-IN"
-                    else "माफ़ कीजिए, आवाज़ साफ़ नहीं आई। कृपया दोबारा बोलें।"
-                )
+                clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["en-IN"])
                 await wa_client.send_text(sender_phone, clarification, settings=settings)
+                await _event_repo.log_event({
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "channel": "whatsapp",
+                    "detected_language": detected_lang,
+                    "status": "empty_transcript",
+                    "timings": timings,
+                })
                 return
 
             # Stage 3: LLM reasoning
@@ -109,16 +166,19 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             timings["upload_send"] = round(time.perf_counter() - s, 2)
 
         timings["total"] = round(time.perf_counter() - start_total, 2)
-        log.info(
-            "Voice processing completed successfully",
-            extra={
-                "request_id": req_id,
-                "user_hash": phone_hash,
-                "language": detected_lang,
-                "model": disclosed_model,
-                "timings": timings,
-            },
-        )
+
+        # Store persistent audit event (transcripts stored ONLY if STORE_RAW_TRANSCRIPTS is True)
+        await _event_repo.log_event({
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "channel": "whatsapp",
+            "detected_language": detected_lang,
+            "model_name": disclosed_model,
+            "timings": timings,
+            "status": "ok",
+            "transcript": transcript if settings.STORE_RAW_TRANSCRIPTS else None,
+            "reply": reply_text if settings.STORE_RAW_TRANSCRIPTS else None,
+        })
 
     except Exception as e:
         log.exception(
@@ -131,6 +191,15 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             await wa_client.send_text(sender_phone, fallback_msg, settings=settings)
         except Exception:
             log.exception("Failed to deliver fallback error message to user")
+
+        await _event_repo.log_event({
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "channel": "whatsapp",
+            "detected_language": detected_lang,
+            "status": "error",
+            "timings": timings,
+        })
 
 
 async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
@@ -147,10 +216,15 @@ async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
         llm_adapter = OpenAICompatibleLLM(settings=settings)
         reply, disclosed_model = await llm_adapter.answer(text)
         await wa_client.send_text(sender_phone, reply, settings=settings)
-        log.info(
-            "Text message answered",
-            extra={"request_id": req_id, "user_hash": phone_hash, "model": disclosed_model},
-        )
+        await _event_repo.log_event({
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "channel": "whatsapp",
+            "model_name": disclosed_model,
+            "status": "ok",
+            "transcript": text if settings.STORE_RAW_TRANSCRIPTS else None,
+            "reply": reply if settings.STORE_RAW_TRANSCRIPTS else None,
+        })
     except Exception as e:
         log.exception("Text message answering failed: %s", e)
         try:
@@ -172,6 +246,7 @@ async def handle_incoming_message(msg: dict[str, Any], settings: Settings | None
         sender_phone = msg.get("from")
         if sender_phone:
             try:
-                await wa_client.send_text(sender_phone, NOT_SUPPORTED_MESSAGE, settings=cfg)
+                unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(cfg.TTS_DEFAULT_LANG, UNSUPPORTED_MEDIA_MESSAGES["en-IN"])
+                await wa_client.send_text(sender_phone, unsupported_msg, settings=cfg)
             except Exception:
                 log.exception("Failed to send unsupported message notification")
