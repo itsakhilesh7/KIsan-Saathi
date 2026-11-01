@@ -18,3 +18,4 @@ class LLMAdapter(ABC):
         Returns:
             tuple[str, str]: (answer_text, model_name_disclosed)
         """
+

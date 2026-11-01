@@ -15,3 +15,4 @@ class TTSError(GnaniError):
 
 class GnaniRateLimitError(GnaniError):
     """Raised when HTTP 429 Too Many Requests is encountered."""
+

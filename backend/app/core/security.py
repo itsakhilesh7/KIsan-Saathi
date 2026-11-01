@@ -64,3 +64,4 @@ def validate_media_type(mime_type: str | None) -> bool:
         return False
     clean_mime = mime_type.lower().split(";")[0].strip()
     return clean_mime in {m.split(";")[0].strip() for m in ALLOWED_AUDIO_MIMES}
+

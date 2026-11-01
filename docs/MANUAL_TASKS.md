@@ -94,3 +94,4 @@ This checklist tracks all tasks that require human action, developer credentials
   - **Why:** If Gnani does not provide hosted Evon, rent an A10G/A100 or RunPod/Vast.ai instance (~24 GB VRAM) running vLLM.
 - [ ] **Task 10: Cloud Deployment Setup (Render / Railway & Vercel)**
   - **Why:** Public web demo and public WhatsApp webhook URL require external hosting.
+

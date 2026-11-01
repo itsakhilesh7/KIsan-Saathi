@@ -198,3 +198,4 @@ Existing tests: 5 tests in `existing-code/tests/test_webhook.py`:
    Move existing 5 webhook tests to `backend/tests/unit/test_webhook.py`; add unit tests for config, language normalization, schemas, and live smoke tests (skipped without keys) in `backend/tests/live/`.
 9. **Step 9: Verification:**
    Run full test suite (`pytest`) and linter (`ruff`). Keep `existing-code/` untouched as an immutable reference snapshot.
+

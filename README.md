@@ -203,3 +203,4 @@ For the detailed living progress log and decisions, consult:
 - [docs/MANUAL_TASKS.md](docs/MANUAL_TASKS.md)
 - [docs/decisions.md](docs/decisions.md)
 - [docs/PACK_README.md](docs/PACK_README.md)
+

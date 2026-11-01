@@ -28,3 +28,4 @@ def extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     item["mime_type"] = audio_info.get("mime_type")
                 out.append(item)
     return out
+
