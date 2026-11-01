@@ -81,4 +81,4 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
   - Developer must obtain Gnani API key and Meta WhatsApp credentials per `docs/MANUAL_TASKS.md` Priority 1.
 - **Git commit hash and message:**
   - Prior commit: `165b8be` ("chore: scaffold repository from agent pack and starter code").
-  - New commit: pending final Part 6 commit.
+  - Current commit: `555f377` ("feat: complete Phase 0 audit and Phase 1 backend foundation").
