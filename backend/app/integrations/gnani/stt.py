@@ -66,13 +66,14 @@ async def _post_with_retry(
     url: str,
     headers: dict[str, str],
     max_retries: int = 3,
+    timeout: float = 60.0,
     **kwargs: Any,
 ) -> httpx.Response:
     """Performs HTTP POST with bounded exponential backoff for 429 and 5xx."""
     last_err: Exception | None = None
     for attempt in range(max_retries):
         try:
-            r = await client.post(url, headers=headers, **kwargs)
+            r = await client.post(url, headers=headers, timeout=timeout, **kwargs)
             if r.status_code == 429:
                 log.warning("Gnani STT 429 rate limit encountered (attempt %d/%d)", attempt + 1, max_retries)
                 last_err = GnaniRateLimitError("Rate limit exceeded on Gnani STT endpoint.")
@@ -117,7 +118,7 @@ async def transcribe_short(
     files = {"audio_file": (os.path.basename(wav_path), audio_bytes, "audio/wav")}
 
     c = client or get_http_client()
-    r = await _post_with_retry(c, STT_URL, headers=headers, data=form_data, files=files)
+    r = await _post_with_retry(c, STT_URL, headers=headers, data=form_data, files=files, timeout=60.0)
     try:
         body = r.json()
     except ValueError:

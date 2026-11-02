@@ -78,7 +78,7 @@ class OpenAICompatibleLLM(LLMAdapter):
         c = get_http_client()
         for attempt in range(3):
             try:
-                r = await c.post(endpoint, headers=headers, json=body)
+                r = await c.post(endpoint, headers=headers, json=body, timeout=120.0)
                 if r.status_code in (429, 500, 502, 503, 504):
                     log.warning("LLM request failed with %d (attempt %d/3)", r.status_code, attempt + 1)
                     last_err = LLMError(f"LLM API error {r.status_code}: {r.text[:200]}")

@@ -55,12 +55,13 @@ async def _post_with_retry(
     headers: dict[str, str],
     json_data: dict[str, Any],
     max_retries: int = 3,
+    timeout: float = 90.0,
 ) -> httpx.Response:
     """Performs HTTP POST with retry for 429 and 5xx errors."""
     last_err: Exception | None = None
     for attempt in range(max_retries):
         try:
-            r = await client.post(url, headers=headers, json=json_data)
+            r = await client.post(url, headers=headers, json=json_data, timeout=timeout)
             if r.status_code == 429:
                 log.warning("Gnani TTS 429 rate limit (attempt %d/%d)", attempt + 1, max_retries)
                 last_err = GnaniRateLimitError("Rate limit exceeded on Gnani TTS endpoint.")
@@ -114,7 +115,7 @@ async def synthesize(
     }
 
     c = client or get_http_client()
-    r = await _post_with_retry(c, TTS_URL, headers=headers, json_data=payload)
+    r = await _post_with_retry(c, TTS_URL, headers=headers, json_data=payload, timeout=90.0)
     content_type = r.headers.get("content-type", "")
     if r.status_code != 200 or ("audio" not in content_type and "octet-stream" not in content_type):
         raise TTSError(f"Gnani TTS failed ({r.status_code}, content-type: {content_type}): {r.text[:300]}")

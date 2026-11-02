@@ -63,7 +63,7 @@ async def download_media(
 
     # Step 1: Query media metadata to get download URL
     meta_url = f"{cfg.wa_graph}/{media_id}"
-    meta_res = await _request_with_retry(c, "GET", meta_url, headers=_auth_headers(cfg))
+    meta_res = await _request_with_retry(c, "GET", meta_url, headers=_auth_headers(cfg), timeout=60.0)
     meta_data = meta_res.json()
     file_url = meta_data.get("url")
     if not file_url:
@@ -78,7 +78,7 @@ async def download_media(
     # Step 2: Download raw binary media in streaming mode with size guard
     chunks: list[bytes] = []
     downloaded = 0
-    async with c.stream("GET", file_url, headers=_auth_headers(cfg)) as stream_resp:
+    async with c.stream("GET", file_url, headers=_auth_headers(cfg), timeout=60.0) as stream_resp:
         stream_resp.raise_for_status()
         async for chunk in stream_resp.aiter_bytes(chunk_size=16384):
             downloaded += len(chunk)
@@ -104,7 +104,7 @@ async def upload_audio(
     data = {"messaging_product": "whatsapp", "type": "audio/ogg"}
     files = {"file": ("reply.ogg", ogg_bytes, "audio/ogg")}
 
-    res = await _request_with_retry(c, "POST", url, headers=headers, data=data, files=files)
+    res = await _request_with_retry(c, "POST", url, headers=headers, data=data, files=files, timeout=60.0)
     return res.json()["id"]
 
 
