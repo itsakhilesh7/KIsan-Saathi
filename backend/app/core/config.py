@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     EMBEDDING_API_KEY: str = ""
 
     # ---- Audio ----
-    AUDIO_MAX_SECONDS: int = 30
+    AUDIO_MAX_SECONDS: int = 60
     AUDIO_MAX_MB: int = 15
     AUDIO_RETENTION_HOURS: int = 24
 

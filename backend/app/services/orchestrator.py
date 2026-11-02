@@ -41,10 +41,10 @@ FALLBACK_MESSAGES: dict[str, str] = {
 }
 
 AUDIO_TOO_LONG_MESSAGES: dict[str, str] = {
-    "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 30 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.",
-    "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम 30 सेकंड)। कृपया छोटा संदेश भेजें।",
-    "en-IN": "Voice note is too long (maximum 30 seconds). Please send a shorter audio message.",
-    "hi-en": "Voice note zyada lamba hai (limit 30 seconds). Please chhota audio message bhejein.",
+    "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 60 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.",
+    "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम 60 सेकंड)। कृपया छोटा संदेश भेजें।",
+    "en-IN": "Voice note is too long (maximum 60 seconds). Please send a shorter audio message.",
+    "hi-en": "Voice note zyada lamba hai (limit 60 seconds). Please chhota audio message bhejein.",
 }
 
 UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {

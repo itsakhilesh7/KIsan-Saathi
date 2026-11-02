@@ -13,6 +13,7 @@ def test_settings_defaults():
     assert s.TTS_MODEL == "timbre-v2.5"
     assert s.ALLOW_CHEMICAL_DETAILS is False
     assert s.RATE_LIMIT_PER_MIN == 20
+    assert s.AUDIO_MAX_SECONDS == 60
     assert s.llm_mode in ("echo", "configured")
 
 
