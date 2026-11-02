@@ -14,12 +14,15 @@ log = logging.getLogger("whatsapp.webhook")
 
 router = APIRouter()
 
-# Default repository for deduplication
-_dedup_repo: DeduplicationRepository = SQLiteDeduplicationRepository()
+# Default repository for deduplication (lazy-initialized)
+_dedup_repo: DeduplicationRepository | None = None
 
 
 def get_dedup_repo() -> DeduplicationRepository:
     """Dependency provider for deduplication repository."""
+    global _dedup_repo
+    if _dedup_repo is None:
+        _dedup_repo = SQLiteDeduplicationRepository()
     return _dedup_repo
 
 
