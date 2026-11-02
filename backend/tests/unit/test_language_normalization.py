@@ -49,10 +49,10 @@ def test_pick_voice_timbre_v25():
     assert voice == "Poorvi"
     assert lang == "hi-en"
 
-    # Unknown language falls back to default hi-IN Nalini
+    # Unknown language falls back to pilot primary language (te-IN Lavanya)
     voice, lang = pick_voice("unrecognized", s)
-    assert voice == "Nalini"
-    assert lang == "hi-IN"
+    assert voice == "Lavanya"
+    assert lang == "te-IN"
 
 
 def test_pick_voice_timbre_v30():

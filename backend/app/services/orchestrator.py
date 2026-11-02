@@ -20,6 +20,7 @@ from ..integrations.gnani import stt as gnani_stt
 from ..integrations.gnani import tts as gnani_tts
 from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
 from ..repositories.events import EventRepository
+from ..repositories.user_preferences import SQLiteUserPreferencesRepository
 from . import audio_service
 
 log = logging.getLogger("orchestrator")
@@ -54,6 +55,17 @@ UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {
 }
 
 _event_repo = EventRepository()
+_user_pref_repo = SQLiteUserPreferencesRepository()
+
+
+def _resolve_user_language(user_hash: str, explicit_lang: str | None, settings: Settings) -> str:
+    """Resolves language: explicit if given, else last seen for user, else pilot primary language."""
+    if explicit_lang:
+        return explicit_lang
+    stored = _user_pref_repo.get_language(user_hash)
+    if stored:
+        return stored
+    return settings.pilot_primary_language
 
 
 async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
@@ -74,7 +86,8 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
     # Audio limit check 1: Validate media type if provided in webhook metadata
     if mime_type and not validate_media_type(mime_type):
         log.warning("Rejected unsupported media MIME type '%s' from user=%s", mime_type, phone_hash)
-        unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(settings.TTS_DEFAULT_LANG, UNSUPPORTED_MEDIA_MESSAGES["en-IN"])
+        fallback_lang = _resolve_user_language(phone_hash, None, settings)
+        unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(fallback_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
         await wa_client.send_text(sender_phone, unsupported_msg, settings=settings)
         await _event_repo.log_event({
             "request_id": req_id,
@@ -104,7 +117,8 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             duration = await asyncio.to_thread(audio_service.get_duration, in_wav)
             if duration > settings.AUDIO_MAX_SECONDS:
                 log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, settings.AUDIO_MAX_SECONDS, phone_hash)
-                too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(settings.TTS_DEFAULT_LANG, AUDIO_TOO_LONG_MESSAGES["en-IN"])
+                fallback_lang = _resolve_user_language(phone_hash, None, settings)
+                too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(fallback_lang, AUDIO_TOO_LONG_MESSAGES["te-IN"])
                 await wa_client.send_text(sender_phone, too_long_msg, settings=settings)
                 await _event_repo.log_event({
                     "request_id": req_id,
@@ -121,11 +135,16 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             timings["stt"] = round(time.perf_counter() - s, 2)
 
             transcript = stt_res.get("transcript", "").strip()
-            detected_lang = stt_res.get("detected_language_code") or settings.TTS_DEFAULT_LANG
+            raw_detected_lang = stt_res.get("detected_language_code")
+            if raw_detected_lang:
+                detected_lang = raw_detected_lang
+                _user_pref_repo.set_language(phone_hash, detected_lang)
+            else:
+                detected_lang = _resolve_user_language(phone_hash, None, settings)
 
             if not transcript:
                 log.info("Empty transcript returned for user=%s", phone_hash)
-                clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["en-IN"])
+                clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["te-IN"])
                 await wa_client.send_text(sender_phone, clarification, settings=settings)
                 await _event_repo.log_event({
                     "request_id": req_id,
@@ -186,7 +205,8 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             e,
             extra={"request_id": req_id, "user_hash": phone_hash},
         )
-        fallback_msg = FALLBACK_MESSAGES.get(detected_lang or "", FALLBACK_MESSAGES["en-IN"])
+        err_lang = _resolve_user_language(phone_hash, detected_lang, settings)
+        fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
         try:
             await wa_client.send_text(sender_phone, fallback_msg, settings=settings)
         except Exception:

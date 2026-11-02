@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from ...core.config import TTS_DEFAULT_LANG, TTS_URL, TTS_V25_VOICES, Settings, get_settings
+from ...core.config import TTS_URL, TTS_V25_VOICES, Settings, get_settings
 from ...core.http_client import get_http_client
 from .errors import GnaniRateLimitError, TTSError
 from .stt import normalize_language_code
@@ -19,15 +19,17 @@ from .stt import normalize_language_code
 log = logging.getLogger("gnani.tts")
 
 
-def pick_voice(language: str, settings: Settings | None = None) -> tuple[str, str]:
+def pick_voice(language: str | None, settings: Settings | None = None) -> tuple[str, str]:
     """Selects a valid (voice, language) tuple for the configured TTS model.
 
     Rules from docs/gnani-api-notes.md:
     - timbre-v2.5 voices are single-language. A mismatch returns HTTP 400.
     - timbre-v3.0 voices speak all 10 supported Indian languages.
+    - Fallback default uses the pilot primary language (pilot.yaml, e.g. te-IN).
     """
     cfg = settings or get_settings()
-    norm_lang = normalize_language_code(language) or cfg.TTS_DEFAULT_LANG
+    primary_lang = cfg.pilot_primary_language
+    norm_lang = normalize_language_code(language) or primary_lang
 
     if cfg.TTS_MODEL == "timbre-v3.0":
         # In v3.0, every voice speaks all languages
@@ -37,13 +39,14 @@ def pick_voice(language: str, settings: Settings | None = None) -> tuple[str, st
     if norm_lang in TTS_V25_VOICES:
         return TTS_V25_VOICES[norm_lang], norm_lang
 
+    fallback_lang = primary_lang if primary_lang in TTS_V25_VOICES else cfg.TTS_DEFAULT_LANG
     log.warning(
-        "Language '%s' (normalized: '%s') not mapped in Timbre v2.5 voices; falling back to default '%s'",
+        "Language '%s' (normalized: '%s') not mapped in Timbre v2.5 voices; falling back to primary/default '%s'",
         language,
         norm_lang,
-        TTS_DEFAULT_LANG,
+        fallback_lang,
     )
-    return TTS_V25_VOICES[TTS_DEFAULT_LANG], TTS_DEFAULT_LANG
+    return TTS_V25_VOICES[fallback_lang], fallback_lang
 
 
 async def _post_with_retry(

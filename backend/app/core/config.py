@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     AUDIO_RETENTION_HOURS: int = 24
 
     @property
+    def pilot_primary_language(self) -> str:
+        """Returns the primary pilot language from pilot.yaml (defaults to 'te-IN')."""
+        pilot = self.load_pilot_config()
+        return pilot.get("primary", {}).get("language", "te-IN")
+
+    @property
     def is_production(self) -> bool:
         """True if running in production environment."""
         return self.APP_ENV.lower() == "production"
