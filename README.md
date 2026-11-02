@@ -107,7 +107,7 @@ flowchart TD
 │   └── tests/
 │       ├── fixtures/          # Mock payloads
 │       ├── live/              # Live integration smoke tests (skipped without keys)
-│       └── unit/              # 37 unit tests (all passing)
+│       └── unit/              # 39 unit tests (all passing)
 ├── evaluation/                # Evaluation datasets and results
 └── frontend/                  # Next.js web demo (Phase 5)
 ```
@@ -200,7 +200,7 @@ python -m backend.scripts.eval_wer --csv backend/data/transcripts.csv
 | WhatsApp Webhook Hardening | ✅ Done | Production secret gate; constant-time sig; SQLite dedup |
 | OpenAI-Compatible LLM Adapter | ✅ Done | Echo mode when unconfigured; disclosures attached |
 | Audio Service (FFmpeg / FFprobe) | ✅ Done | 16kHz WAV conversion, OGG/Opus encoding, 25s chunking |
-| Test Suite | ✅ Done | 37 passed, 5 skipped (2 live without keys, 3 ffmpeg fixtures), 0 failed |
+| Test Suite | ✅ Done | 39 passed, 5 skipped (2 live without keys, 3 ffmpeg fixtures), 0 failed |
 
 For the detailed living progress log and decisions, consult:
 - [docs/PROGRESS.md](docs/PROGRESS.md)

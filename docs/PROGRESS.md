@@ -31,7 +31,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - Gnani Prisma STT & Timbre TTS adapters with explicit timeouts, 429/5xx retries, and language normalization.
 - OpenAI-compatible LLM adapter with zero-dependency echo mode and mandatory model name disclosure.
 - Audio transcoding & chunking service (`to_wav16k`, `wav_to_ogg_opus`, `split_wav`).
-- To run: `pytest backend/tests/` (37 unit tests passing, 5 skipped: 2 live smoke tests + 3 ffmpeg fixtures).
+- To run: `pytest backend/tests/` (39 unit tests passing, 5 skipped: 2 live smoke tests + 3 ffmpeg fixtures).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -42,16 +42,36 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 | data.gov.in | MOCKED | Schema placeholder ready; requires `DATA_GOV_API_KEY` live check. |
 | Open-Meteo | MOCKED | Schema placeholder ready; implementation in Phase 3. |
 | Evon / LLM | MOCKED | Tested locally in echo mode; live completions require `LLM_BASE_URL`. |
-| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup and events tables verified across unit tests with `tmp_path`. |
+| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup, events, and user preferences tables verified with `tmp_path`. Ephemeral hosting note: SQLite loses data on redeploy; will move events to Supabase/PostgreSQL in Phase 6. |
 
-- **Known issues and risks:** Windows loopback sockets in sandbox mode block synchronous `TestClient` unless running with sandbox bypass or live network. Prisma STT live language code format is unverified (`format unverified` normalization layer in place).
+- **Known issues and risks:** Windows loopback sockets in sandbox mode block synchronous `TestClient` unless running with sandbox bypass or live network. Prisma STT live language code format is unverified (`format unverified` normalization layer in place). **SQLite on Ephemeral Hosting:** Hosting platforms (e.g., Render, Railway without persistent disks) reset local SQLite files on redeployment; audit events and deduplication tables will migrate to managed Supabase/Postgres (`DATABASE_URL`) in Phase 6.
 - **Needs from developer:** Fill `GNANI_API_KEY`, `WHATSAPP_*` credentials in `backend/.env` per `docs/MANUAL_TASKS.md`.
 - **Decisions pending:** D-008 (Hosted embedding API choice), D-009 (Evon hosting on Discord), D-010 (Pilot confirmation).
-- **Exact next recommended task:** Phase 2 (WhatsApp live loop) once developer supplies Meta credentials.
+- **Exact next recommended task:** Developer provides live Gnani and Meta responses to confirm real formats before Phase 2.
 
 ---
 
 ## LOG
+
+### [2026-11-02 09:55] Phase 1.7 Fix Pass Complete
+- **Goal and phase:** Phase 1.7 small fix pass before Phase 2.
+- **What changed:**
+  - **Item 1 (.env.example & Settings parity):** Set `AUDIO_MAX_SECONDS=60` and synchronized all keys and defaults with `Settings`. Added unit test `test_env_example_matches_settings.py` checking bidirectional key parity and default equality.
+  - **Item 2 (Single repo-root virtual environment):** Created root virtual environment `.venv/` and installed all requirements. Updated `docs/PHASE2_CHECKLIST.md`, `scripts/scan_secrets.ps1`, and `README.md`. Removed redundant `existing-code/.venv`.
+  - **Item 3 (test_gnani.py live diagnostics):** Pre-converts any input audio (`.m4a`, `.ogg`, `.mp3`, `.wav`) to 16 kHz mono WAV with `audio_service`. Prints full raw Prisma STT JSON response for real `detected_language_code` inspection. Post-TTS encodes OGG/Opus mono, calculates file size in KB, and asserts against the WhatsApp 512 KB inline limit. Saves outputs under `out/`.
+  - **Item 4 (eval_wer.py clips discovery):** Defaulted clips directory to `backend/data/clips/`, added `--clips-dir` CLI option, accepts plain filenames from `transcripts.csv`, and exits with a clear error if 0 matching audio clips exist.
+  - **Item 5 (PHASE2_CHECKLIST.md real log output):** Replaced placeholder log examples with real single-line JSON structured logs emitted by `StructuredJsonFormatter` and real JSON audit records from `EventRepository` (transcripts omitted).
+  - **Item 6 (Remaining TTS_DEFAULT_LANG fallbacks replaced):** Replaced hardcoded default language fallbacks in `handle_text_message` and unsupported message type handling with `_resolve_user_language` (user's remembered language or pilot primary language `te-IN`). Added unit test.
+  - **Item 7 (scripts/scan_secrets.py hardened):** Added unquoted `KEY=VALUE` matching for keys containing KEY, SECRET, TOKEN, PASSWORD with 16+ chars. Updated Meta pattern to `EAA[A-Za-z0-9]{20,}`. Removed incorrect `ai.vachana.ai` regex. Added commit history check for added `.env` files via `git log --all --diff-filter=A --name-only`. Restricted allowlist to exact placeholder matches only. Documented `gitleaks` secondary check in `docs/MANUAL_TASKS.md`.
+  - **Item 8 (Test database isolation):** Added autouse fixture `isolate_databases_and_logs` in `backend/tests/conftest.py` redirecting `EventRepository`, `SQLiteUserPreferencesRepository`, and deduplication to pytest `tmp_path`, guaranteeing `./data` and `./logs` are never touched during test runs.
+  - **Item 9 (simulate_webhook.py text mode):** Added `--text` flag for end-to-end offline testing and documented that audio mode with fake media ID fails at media download without real Meta media ID.
+  - **Item 10 (Ephemeral hosting note):** Documented that SQLite on ephemeral hosting loses state on redeploy and will migrate to managed Supabase in Phase 6.
+- **Commands run and their real results:**
+  - `pytest backend/tests/`: 39 passed, 5 skipped (2 live smoke tests + 3 ffmpeg fixtures), 0 failed in 3.65s.
+  - `ruff check backend/ scripts/`: All checks passed! (0 errors).
+  - `python scripts/scan_secrets.py`: `[OK] CLEAN: No exposed secrets or committed .env files detected in working tree or git history.`
+- **Tests:** 39 unit tests passed, 5 skipped.
+- **Git commit hashes:** Pending small atomic commits.
 
 ### [2026-11-02 09:30] Phase 1.6 Follow-Up Hardening Pass Complete
 - **Goal and phase:** Phase 1.6 short follow-up before Phase 2.

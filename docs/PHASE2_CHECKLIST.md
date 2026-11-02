@@ -8,7 +8,7 @@ This document details the exact manual steps for testing the Kisan Saathi live W
 
 1. **Python Virtual Environment** activated:
    ```powershell
-   .\existing-code\.venv\Scripts\Activate.ps1
+   .\.venv\Scripts\Activate.ps1
    ```
 2. **Tunneling Tool** installed (`ngrok` or `cloudflared`):
    ```powershell
@@ -34,7 +34,7 @@ This document details the exact manual steps for testing the Kisan Saathi live W
 ### Step 1: Start the Local Backend Server
 In PowerShell:
 ```powershell
-.\existing-code\.venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 Verify health locally:
 ```powershell
@@ -113,10 +113,9 @@ Meta test numbers can only send to verified phone numbers:
 ### Step 7: Test 1 — Inbound Text Message
 1. Send a text message (e.g., `"Namaskaram"`) from your phone to the Meta test WhatsApp number.
 2. Check terminal logs:
-   ```text
-   INFO:     Received webhook entry with 1 changes
-   INFO:     Dispatched background task for sender=...
-   INFO:     Text message received: 'Namaskaram'
+   ```json
+   {"timestamp": "2026-11-02 09:40:12,100", "level": "INFO", "logger": "whatsapp.webhook", "message": "Received webhook with 1 messages", "request_id": "8f3b2a1c-99d8-4f1e-84b2-e1c8e3d09a12"}
+   {"timestamp": "2026-11-02 09:40:12,105", "level": "INFO", "logger": "whatsapp.webhook", "message": "Dispatched background task for msg_id=wamid.HBgMOTE5... sender=3c2a1b9f8e7d6c5b", "request_id": "8f3b2a1c-99d8-4f1e-84b2-e1c8e3d09a12"}
    ```
 3. Your phone receives a reply text.
 
@@ -130,21 +129,38 @@ Meta test numbers can only send to verified phone numbers:
 
 ## 3. What a Success Log Line Looks Like
 
-During an end-to-end voice note execution, the backend logs each stage timing and event:
+During an end-to-end voice note execution, the backend logs structured JSON for console output, and appends a persistent event row to `data/events.sqlite3` and `logs/events.jsonl`. Notice that raw transcripts and raw phone numbers are NEVER logged (privacy by design):
 
-```text
-INFO:     [orchestrator] Processing voice message media_id='1029384756' mime='audio/ogg; codecs=opus' from_hash='a1b2c3d4...'
-INFO:     [whatsapp] Downloaded media 28410 bytes in 0.42s
-INFO:     [audio] Converted in.ogg -> 16kHz in.wav (duration: 6.4s)
-INFO:     [gnani.stt] STT completed in 1.15s: transcript='వరంగల్ లో పత్తి ధర ఎంత' detected_lang='te-IN'
-INFO:     [llm] LLM mode='echo' (or 'gnani-evon') response generated in 0.25s
-INFO:     [gnani.tts] Synthesized 96000 bytes audio using voice='Lavanya' lang='te-IN' in 1.82s
-INFO:     [audio] Converted out.wav -> out.ogg (Opus 24kbps) in 0.18s
-INFO:     [whatsapp] Uploaded reply media_id='9988776655' in 0.35s
-INFO:     [whatsapp] Sent voice note audio reply to user
-INFO:     [events] Logged request_id='req_xyz789' status='ok' total_time=4.17s
+### 1. Application Console Log (`stdout`)
+```json
+{"timestamp": "2026-11-02 09:41:00,120", "level": "INFO", "logger": "whatsapp.webhook", "message": "Received webhook with 1 messages", "request_id": "b1a2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d"}
+{"timestamp": "2026-11-02 09:41:00,125", "level": "INFO", "logger": "whatsapp.webhook", "message": "Dispatched background task for msg_id=wamid.HBgMOTE5... sender=7a8b9c0d1e2f3a4b", "request_id": "b1a2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d"}
+```
+
+### 2. Audit Event Output (`logs/events.jsonl` & `data/events.sqlite3`)
+Emitted on successful voice pipeline completion. Transcripts are omitted (`null`) unless `STORE_RAW_TRANSCRIPTS=true`:
+```json
+{
+  "request_id": "b1a2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+  "user_hash": "7a8b9c0d1e2f3a4b",
+  "channel": "whatsapp",
+  "detected_language": "te-IN",
+  "model_name": "echo",
+  "timings": {
+    "download_convert": 0.42,
+    "stt": 1.15,
+    "llm": 0.25,
+    "tts_convert": 1.82,
+    "upload_send": 0.35,
+    "total": 3.99
+  },
+  "status": "ok",
+  "transcript": null,
+  "reply": null
+}
 ```
 
 On your phone, you should see:
 1. An audio voice note message playable with inline waveform.
 2. A text copy of the transcript/answer (if `SEND_TEXT_COPY=True`).
+
