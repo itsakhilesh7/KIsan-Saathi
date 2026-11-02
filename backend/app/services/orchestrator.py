@@ -54,15 +54,43 @@ UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {
     "hi-en": "Help ke liye please audio voice note ya text message bhejein.",
 }
 
-_event_repo = EventRepository()
-_user_pref_repo = SQLiteUserPreferencesRepository()
+_event_repo: EventRepository | None = None
+_user_pref_repo: SQLiteUserPreferencesRepository | None = None
+
+
+def get_event_repo() -> EventRepository:
+    """Returns the event repository instance, lazily initializing if needed."""
+    global _event_repo
+    if _event_repo is None:
+        _event_repo = EventRepository()
+    return _event_repo
+
+
+def set_event_repo(repo: EventRepository | None) -> None:
+    """Allows tests to inject a temporary event repository."""
+    global _event_repo
+    _event_repo = repo
+
+
+def get_user_pref_repo() -> SQLiteUserPreferencesRepository:
+    """Returns the user preferences repository instance, lazily initializing if needed."""
+    global _user_pref_repo
+    if _user_pref_repo is None:
+        _user_pref_repo = SQLiteUserPreferencesRepository()
+    return _user_pref_repo
+
+
+def set_user_pref_repo(repo: SQLiteUserPreferencesRepository | None) -> None:
+    """Allows tests to inject a temporary user preferences repository."""
+    global _user_pref_repo
+    _user_pref_repo = repo
 
 
 def _resolve_user_language(user_hash: str, explicit_lang: str | None, settings: Settings) -> str:
     """Resolves language: explicit if given, else last seen for user, else pilot primary language."""
     if explicit_lang:
         return explicit_lang
-    stored = _user_pref_repo.get_language(user_hash)
+    stored = get_user_pref_repo().get_language(user_hash)
     if stored:
         return stored
     return settings.pilot_primary_language
@@ -89,7 +117,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         fallback_lang = _resolve_user_language(phone_hash, None, settings)
         unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(fallback_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
         await wa_client.send_text(sender_phone, unsupported_msg, settings=settings)
-        await _event_repo.log_event({
+        await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": "whatsapp",
@@ -120,7 +148,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
                 fallback_lang = _resolve_user_language(phone_hash, None, settings)
                 too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(fallback_lang, AUDIO_TOO_LONG_MESSAGES["te-IN"])
                 await wa_client.send_text(sender_phone, too_long_msg, settings=settings)
-                await _event_repo.log_event({
+                await get_event_repo().log_event({
                     "request_id": req_id,
                     "user_hash": phone_hash,
                     "channel": "whatsapp",
@@ -138,7 +166,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             raw_detected_lang = stt_res.get("detected_language_code")
             if raw_detected_lang:
                 detected_lang = raw_detected_lang
-                _user_pref_repo.set_language(phone_hash, detected_lang)
+                get_user_pref_repo().set_language(phone_hash, detected_lang)
             else:
                 detected_lang = _resolve_user_language(phone_hash, None, settings)
 
@@ -146,7 +174,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
                 log.info("Empty transcript returned for user=%s", phone_hash)
                 clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["te-IN"])
                 await wa_client.send_text(sender_phone, clarification, settings=settings)
-                await _event_repo.log_event({
+                await get_event_repo().log_event({
                     "request_id": req_id,
                     "user_hash": phone_hash,
                     "channel": "whatsapp",
@@ -187,7 +215,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         timings["total"] = round(time.perf_counter() - start_total, 2)
 
         # Store persistent audit event (transcripts stored ONLY if STORE_RAW_TRANSCRIPTS is True)
-        await _event_repo.log_event({
+        await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": "whatsapp",
@@ -212,7 +240,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         except Exception:
             log.exception("Failed to deliver fallback error message to user")
 
-        await _event_repo.log_event({
+        await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": "whatsapp",
@@ -236,7 +264,7 @@ async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
         llm_adapter = OpenAICompatibleLLM(settings=settings)
         reply, disclosed_model = await llm_adapter.answer(text)
         await wa_client.send_text(sender_phone, reply, settings=settings)
-        await _event_repo.log_event({
+        await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": "whatsapp",
@@ -247,8 +275,10 @@ async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
         })
     except Exception as e:
         log.exception("Text message answering failed: %s", e)
+        err_lang = _resolve_user_language(phone_hash, None, settings)
+        fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
         try:
-            await wa_client.send_text(sender_phone, FALLBACK_MESSAGES["en-IN"], settings=settings)
+            await wa_client.send_text(sender_phone, fallback_msg, settings=settings)
         except Exception:
             log.exception("Failed to deliver fallback text")
 
@@ -266,7 +296,9 @@ async def handle_incoming_message(msg: dict[str, Any], settings: Settings | None
         sender_phone = msg.get("from")
         if sender_phone:
             try:
-                unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(cfg.TTS_DEFAULT_LANG, UNSUPPORTED_MEDIA_MESSAGES["en-IN"])
+                phone_hash = hash_phone(sender_phone, cfg.PHONE_HASH_SALT)
+                user_lang = _resolve_user_language(phone_hash, None, cfg)
+                unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(user_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
                 await wa_client.send_text(sender_phone, unsupported_msg, settings=cfg)
             except Exception:
                 log.exception("Failed to send unsupported message notification")
