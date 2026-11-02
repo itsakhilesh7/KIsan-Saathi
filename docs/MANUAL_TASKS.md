@@ -8,12 +8,21 @@ This checklist tracks all tasks that require human action, developer credentials
 
 - [x] **Task: Automated Secret Scanning (Working Tree & Git History)**
   - **Tool:** `python scripts/scan_secrets.py` (or `./scripts/scan_secrets.ps1`).
-  - **Coverage:** Checks all tracked/untracked working tree files and the full Git commit log (`git log -p --all`) for high-entropy tokens, API keys (Gnani, Meta, OpenAI/LLM, GitHub), private keys, and `.env` files.
-  - **Audit Run Result (Phase 1.6):**
+  - **Coverage:** Checks all tracked/untracked working tree files and the full Git commit log (`git log -p --all`) for high-entropy tokens, unquoted `KEY=VALUE` secrets, Meta tokens (`EAA...`), private keys, and historically committed `.env` files using strict exact allowlisting.
+  - **Audit Run Result (Phase 1.7):**
     ```text
     [*] Scanning Kisan Saathi working tree...
-    [*] Scanning Git commit history...
-    [OK] CLEAN: No exposed secrets detected in working tree or git history.
+    [*] Scanning Git commit history diffs...
+    [*] Checking for historically committed .env files...
+    [OK] CLEAN: No exposed secrets or committed .env files detected in working tree or git history.
+    ```
+  - **Secondary Check (Gitleaks):**
+    To run an independent secondary scan with Gitleaks:
+    ```powershell
+    # Install gitleaks on Windows:
+    winget install Gitleaks.Gitleaks
+    # Run scan across all commits and working directory:
+    gitleaks detect --source . --verbose
     ```
   - **Status:** PASS. Continuous execution required prior to any `git push origin main`.
 
