@@ -15,6 +15,8 @@ ALLOWED_AUDIO_MIMES = {
     "audio/mpeg",
     "audio/mp3",
     "audio/aac",
+    "audio/amr",
+    "audio/mp4",
     "audio/m4a",
     "audio/x-m4a",
 }

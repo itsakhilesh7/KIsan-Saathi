@@ -8,12 +8,18 @@ from backend.app.core.security import validate_media_type
 
 
 def test_validate_media_type_allowlist():
-    """Verify validate_media_type rejects unsupported formats and accepts allowlisted audio."""
+    """Verify validate_media_type rejects unsupported formats and accepts allowlisted audio.
+
+    Note: m4a audio files sent from WhatsApp mobile clients report as audio/mp4,
+    so audio/mp4 must be accepted while video/mp4 remains rejected.
+    """
     assert validate_media_type("audio/ogg") is True
     assert validate_media_type("audio/ogg; codecs=opus") is True
     assert validate_media_type("audio/wav") is True
     assert validate_media_type("audio/mpeg") is True
-    assert validate_media_type("audio/mp4") is False  # mp4 video not audio
+    assert validate_media_type("audio/aac") is True
+    assert validate_media_type("audio/amr") is True
+    assert validate_media_type("audio/mp4") is True  # m4a voice notes use audio/mp4 container
     assert validate_media_type("video/mp4") is False
     assert validate_media_type("image/jpeg") is False
     assert validate_media_type(None) is False
