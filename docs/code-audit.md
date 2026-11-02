@@ -198,6 +198,8 @@ Existing tests: 5 tests in `existing-code/tests/test_webhook.py`:
    Implemented `backend/app/repositories/events.py` logging to SQLite and JSONL non-blockingly. Added `STORE_RAW_TRANSCRIPTS: bool = False` (transcripts omitted by default per privacy rules).
 9. **Step 9: Language-Aware Prompts:**
    Standardized `EMPTY_TRANSCRIPT_MESSAGES`, `FALLBACK_MESSAGES` (referencing 1551 helpline), `AUDIO_TOO_LONG_MESSAGES`, and `UNSUPPORTED_MEDIA_MESSAGES` across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
-10. **Step 10: Unit & Live Test Verification:**
-   Expanded test suite to 24 unit tests (100% passing) and 2 live smoke tests (skipped without keys). `existing-code/` remains untouched as an immutable reference snapshot.
+10. **Step 10: Phase 1.6 Hardening & Per-Request Timeouts:**
+   Configured sensible client pool defaults and enforced per-request timeouts: STT 60s, TTS 90s, LLM 120s, WhatsApp media 60s. Implemented `SQLiteUserPreferencesRepository` remembering user language, and routed unknown-language fallbacks strictly to pilot primary language (`te-IN` Lavanya). Increased `AUDIO_MAX_SECONDS` to 60s with 25-60s chunking and >60s rejection. Allowed `audio/mp4` (m4a voice notes) and `audio/amr`. Added secret scanner (`scripts/scan_secrets.py`) and simulated webhook script (`backend/scripts/simulate_webhook.py`).
+11. **Step 11: Unit & Live Test Verification:**
+   Expanded test suite to 37 unit tests (100% passing), 5 skipped (2 live smoke tests without keys, 3 ffmpeg fixtures if ffmpeg is missing on PATH), and 0 failures. `existing-code/` remains untouched as an immutable reference snapshot.
 

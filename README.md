@@ -86,26 +86,28 @@ flowchart TD
 │   ├── gnani-api-notes.md     # Verified Gnani API endpoints & models
 │   ├── MANUAL_TASKS.md        # Action checklist for developer credentials
 │   ├── PACK_README.md         # Original planning pack documentation
+│   ├── PHASE2_CHECKLIST.md    # Manual runbook for WhatsApp live loop
 │   ├── PROGRESS.md            # Living project log for human & AI reviewers
 │   └── whatsapp-integration.md# Meta Cloud API integration guide
 ├── existing-code/             # Immutable reference snapshot of starter code
+├── scripts/                   # scan_secrets.py (Working tree & git secret audit)
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/        # REST routes (health, voice, mandi, weather)
 │   │   ├── channels/whatsapp/ # Webhook, signature check, deduplication, client
-│   │   ├── core/              # Typed Settings, structured logging, security
+│   │   ├── core/              # Typed Settings, shared HTTP client, security
 │   │   ├── integrations/
 │   │   │   ├── gnani/         # Prisma STT & Timbre TTS adapters
 │   │   │   └── llm/           # OpenAI-compatible LLM adapter (Evon)
-│   │   ├── repositories/      # Deduplication persistence (SQLite)
+│   │   ├── repositories/      # Deduplication, events & user preferences (SQLite)
 │   │   ├── schemas/           # Pydantic schemas (Evidence, Intent, Voice)
 │   │   └── services/          # AudioService (ffmpeg), Orchestrator
 │   ├── data/                  # transcripts.csv manifest & audio clips
-│   ├── scripts/               # test_gnani.py, eval_wer.py
+│   ├── scripts/               # test_gnani.py, eval_wer.py, simulate_webhook.py
 │   └── tests/
 │       ├── fixtures/          # Mock payloads
 │       ├── live/              # Live integration smoke tests (skipped without keys)
-│       └── unit/              # 16 unit tests (all passing)
+│       └── unit/              # 37 unit tests (all passing)
 ├── evaluation/                # Evaluation datasets and results
 └── frontend/                  # Next.js web demo (Phase 5)
 ```
@@ -150,11 +152,14 @@ Copy-Item .env.example backend\.env
 
 ### 3. Verify Configuration & Run Tests
 ```powershell
-# Run the test suite (16 unit tests mocked, live tests skipped without keys)
+# Run the test suite (37 unit tests mocked, live/ffmpeg tests skipped if missing)
 pytest backend/tests/
 
 # Run code style and lint checks with ruff
 ruff check backend/
+
+# Scan working tree and git history for secrets
+python scripts/scan_secrets.py
 ```
 
 ### 4. Running the API Locally
@@ -195,7 +200,7 @@ python -m backend.scripts.eval_wer --csv backend/data/transcripts.csv
 | WhatsApp Webhook Hardening | ✅ Done | Production secret gate; constant-time sig; SQLite dedup |
 | OpenAI-Compatible LLM Adapter | ✅ Done | Echo mode when unconfigured; disclosures attached |
 | Audio Service (FFmpeg / FFprobe) | ✅ Done | 16kHz WAV conversion, OGG/Opus encoding, 25s chunking |
-| Test Suite | ✅ Done | 16 passed, 2 skipped (LIVE without keys), 0 failed |
+| Test Suite | ✅ Done | 37 passed, 5 skipped (2 live without keys, 3 ffmpeg fixtures), 0 failed |
 
 For the detailed living progress log and decisions, consult:
 - [docs/PROGRESS.md](docs/PROGRESS.md)

@@ -1,12 +1,14 @@
 # Kisan Saathi: Progress Log
 
 ## START HERE
-Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hindi, English; Hinglish tested) built for the Gnani Internship Challenge (Deadline: 10 Nov 2026). Pipeline: voice note -> Gnani Prisma STT v3.0 -> Evon LLM (OpenAI-compatible adapter with echo fallback and disclosure) with allowlisted tools (mandi prices from data.gov.in, weather from Open-Meteo, crop Q&A from KCC records) -> Gnani Timbre TTS -> voice note back. No pesticide/fertiliser doses are ever generated. All facts come from retrieved evidence.
+Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hindi, English; Hinglish tested) built for the Gnani Internship Challenge (Deadline: 10 Nov 2026, treating 9 Nov as the real target). Pipeline: voice note -> Gnani Prisma STT v3.0 -> Evon LLM (OpenAI-compatible adapter with echo fallback and disclosure) with allowlisted tools (mandi prices from data.gov.in, weather from Open-Meteo, crop Q&A from KCC records) -> Gnani Timbre TTS -> voice note back. No pesticide/fertiliser doses are ever generated. All facts come from retrieved evidence.
+
+**REPOSITORY VISIBILITY WARNING:** The GitHub remote repository (`https://github.com/itsakhilesh7/KIsan-Saathi.git`) is confirmed **PUBLIC**. All commits and history are publicly visible. Do NOT stage or commit real API keys, tokens, `.env` files, or raw audio recordings. Always run `python scripts/scan_secrets.py` before pushing.
 
 ### Phase Status (P0..P8)
 - **P0 (Access & Audit):** Done (offline parts complete; live API keys pending from developer).
-- **P1 (Backend Foundation & Migration):** Done (migrated, hardened, 16 unit tests passing).
-- **P2 (WhatsApp Live Loop):** Not started (starts upon developer confirmation of Meta credentials).
+- **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5 & Phase 1.6 complete; 37 unit tests passing).
+- **P2 (WhatsApp Live Loop):** Ready to start (manual setup steps documented in `docs/PHASE2_CHECKLIST.md`; awaiting developer credentials).
 - **P3 (Tools, Intent, Grounded Answers):** Not started.
 - **P4 (Crop Q&A + Safety):** Not started.
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
@@ -18,15 +20,18 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - Backend FastAPI app with Request-ID middleware, structured JSON logging, and `/api/health`.
 - Hardened WhatsApp webhook with constant-time HMAC-SHA256 signature checking and SQLite deduplication.
 - Production startup fail-fast checks (rejects empty `META_APP_SECRET` and default `PHONE_HASH_SALT` / `WHATSAPP_VERIFY_TOKEN`).
-- Outbound HTTP connection pooling via shared `httpx.AsyncClient` (`core/http_client.py`) across WhatsApp, Gnani, and LLM adapters.
-- Audio limits: streaming download size guard (`AUDIO_MAX_MB`), duration limit check (`AUDIO_MAX_SECONDS`), and MIME type allowlist.
+- Outbound HTTP connection pooling via shared `httpx.AsyncClient` (`core/http_client.py`) with sensible defaults and enforced per-request timeouts (STT 60s, TTS 90s, LLM 120s, WhatsApp media 60s).
+- Audio limits: streaming download size guard (`AUDIO_MAX_MB`), duration limit check (`AUDIO_MAX_SECONDS=60`), chunking for 25-60s, and MIME type allowlist (`audio/ogg`, `audio/wav`, `audio/mp4` for m4a, `audio/aac`, `audio/amr`, `audio/mpeg`).
+- User preference persistence (`repositories/user_preferences.py`): tracks last seen language per salted phone hash; unknown-language fallbacks strictly route to pilot primary language (`te-IN` Lavanya).
 - Persistent non-blocking audit events (`repositories/events.py` in SQLite + JSONL); transcripts omitted by default (`STORE_RAW_TRANSCRIPTS=false`).
-- Fully language-aware prompts (empty transcript, audio too long, fallbacks) across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+- Fully language-aware prompts (empty transcript, audio too long, fallbacks referencing 1551) across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+- Simulated webhook test script (`backend/scripts/simulate_webhook.py`) for local verification without Meta.
+- Secret scanner (`scripts/scan_secrets.py` / `.ps1`) auditing working tree and git history.
 - Typed `Settings` reading all `.env.example` keys; startup warning on unconfirmed pilot.
 - Gnani Prisma STT & Timbre TTS adapters with explicit timeouts, 429/5xx retries, and language normalization.
 - OpenAI-compatible LLM adapter with zero-dependency echo mode and mandatory model name disclosure.
 - Audio transcoding & chunking service (`to_wav16k`, `wav_to_ogg_opus`, `split_wav`).
-- To run: `pytest backend/tests/` (unit tests passing, live smoke tests skipped without keys).
+- To run: `pytest backend/tests/` (37 unit tests passing, 5 skipped: 2 live smoke tests + 3 ffmpeg fixtures).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -48,6 +53,24 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
+### [2026-11-02 09:30] Phase 1.6 Follow-Up Hardening Pass Complete
+- **Goal and phase:** Phase 1.6 short follow-up before Phase 2.
+- **What changed:**
+  - **Item 1 (Default reply language & user preference memory):** Unknown-language fallbacks (unsupported media, audio too long, empty transcript, error fallback, TTS fallback voice) now strictly route to the pilot primary language (`te-IN`, `Lavanya`) from `config/pilot.yaml`. Built `backend/app/repositories/user_preferences.py` (SQLite-backed) to record and remember the last seen language for each salted user hash.
+  - **Item 2 (Timeouts):** Shared `httpx.AsyncClient` configured with sensible defaults (`Timeout(60.0, connect=10.0, read=60.0, write=30.0)`). Per-request timeouts enforced: STT (60s), TTS (90s), LLM (120s), WhatsApp media download & upload (60s). Verified via mock timeout tracking client.
+  - **Item 3 (MIME Allowlist):** Added `audio/mp4` and `audio/amr` to `ALLOWED_AUDIO_MIMES` in `core/security.py`. Updated unit test to confirm `audio/mp4` is valid (WhatsApp voice notes from iOS/Android frequently use `.m4a` inside an `audio/mp4` container) while `video/mp4` is rejected.
+  - **Item 4 (Audio Duration & Chunking):** Raised `AUDIO_MAX_SECONDS` default to 60s. Enforced chunking (<= 25s per Prisma STT call) for clips between 25s and 60s, and rejection for clips > 60s using language-aware message. Added test fixtures for 20s, 40s, and 70s (skipped when ffmpeg is missing on PATH).
+  - **Item 5 (Docs Consistency):** Unified test counts (37 unit tests passed, 5 skipped, 0 failed), statuses, and verified public repository notes across `README.md`, `docs/PROGRESS.md`, and `docs/code-audit.md`.
+  - **Item 6 (Secret Scanner):** Created `scripts/scan_secrets.py` and PowerShell wrapper `scripts/scan_secrets.ps1`. Scans working tree and complete Git history (`git log -p --all`) for credentials. Clean run documented in `docs/MANUAL_TASKS.md`.
+  - **Item 7 (Simulate Webhook):** Created `backend/scripts/simulate_webhook.py` generating signed WhatsApp audio webhooks to test local `/webhook` route without calling Meta.
+  - **Item 8 (Phase 2 Checklist):** Created `docs/PHASE2_CHECKLIST.md` with step-by-step Windows runbook for tunneling, Meta Developer Portal configuration, token generation, text/voice testing, and expected log lines.
+- **Commands run and their real results:**
+  - `pytest backend/tests/`: 37 passed, 5 skipped, 0 failed in 1.73s.
+  - `ruff check backend/`: All checks passed! (0 errors).
+  - `python scripts/scan_secrets.py`: `[OK] CLEAN: No exposed secrets detected in working tree or git history.`
+- **Tests:** 37 unit tests passed, 5 skipped (2 live without keys, 3 ffmpeg fixtures).
+- **Git commit hashes:** `4cb221c`, `26da4ce`, `605ba01`, `535e279`.
+
 ### [2026-11-02 00:08] Phase 1.5 Hardening Pass Complete
 - **Goal and phase:** Phase 1.5 short hardening pass before Phase 2.
 - **What changed:**
@@ -67,7 +90,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
   - `pytest backend/tests/unit/test_orchestrator_hardening.py`: passed (3 passed in 1.22s).
   - `pytest backend/tests/unit/test_events_repository.py`: passed (1 passed in 0.21s).
 - **Tests:** 28 unit tests passed, 2 live skipped.
-- **Git commit hash and message:** pending commit for Phase 1.5.
+- **Git commit hash and message:** `ecfcc79` through `dcd2ea7` (pushed to origin main).
 
 ### [2026-11-01 23:50] Remote Repository Linked and Pushed to GitHub
 - **Goal and phase:** Remote repository setup (Phase 0/1 milestone completion).
