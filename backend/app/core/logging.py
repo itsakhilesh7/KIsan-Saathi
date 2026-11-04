@@ -24,23 +24,33 @@ REDACTED_KEYS = {"key", "secret", "token", "auth", "password", "credential"}
 
 # Pattern for Telegram Bot API tokens in URLs (/bot<token>/)
 TELEGRAM_TOKEN_REGEX = re.compile(r"/bot[0-9]+:[A-Za-z0-9_-]+", re.IGNORECASE)
+# Pattern for API keys in URL query parameters or headers (api-key=..., apikey=...)
+API_KEY_PARAM_REGEX = re.compile(r"(?i)(api[-_]?key)=([a-zA-Z0-9_\-]+)")
+
+
+def _sanitize_string(text: str) -> str:
+    """Sanitizes text by stripping bot tokens and API keys."""
+    if not isinstance(text, str):
+        return text
+    s = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", text)
+    return API_KEY_PARAM_REGEX.sub(r"\1=[REDACTED]", s)
 
 
 class TelegramTokenRedactionFilter(logging.Filter):
-    """Redacts Telegram Bot tokens (/bot<token>/) from log records to prevent secret leakage."""
+    """Redacts Telegram Bot tokens and API keys from log records to prevent secret leakage."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
-            record.msg = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", record.msg)
+            record.msg = _sanitize_string(record.msg)
         if record.args:
             if isinstance(record.args, dict):
                 record.args = {
-                    k: (TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", v) if isinstance(v, str) else v)
+                    k: (_sanitize_string(v) if isinstance(v, str) else v)
                     for k, v in record.args.items()
                 }
             elif isinstance(record.args, tuple):
                 record.args = tuple(
-                    (TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", a) if isinstance(a, str) else a)
+                    (_sanitize_string(a) if isinstance(a, str) else a)
                     for a in record.args
                 )
         return True
@@ -77,7 +87,7 @@ class StructuredJsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         req_id = _REQUEST_ID_CTX.get() or getattr(record, "request_id", "")
         raw_msg = record.getMessage()
-        sanitized_msg = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", raw_msg)
+        sanitized_msg = _sanitize_string(raw_msg)
 
         log_entry: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
@@ -102,7 +112,7 @@ class StructuredJsonFormatter(logging.Formatter):
                     elif isinstance(v, bytes):
                         log_entry[k] = f"<bytes: {len(v)} bytes>"
                     elif isinstance(v, str):
-                        log_entry[k] = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", v)
+                        log_entry[k] = _sanitize_string(v)
                     else:
                         log_entry[k] = v
 

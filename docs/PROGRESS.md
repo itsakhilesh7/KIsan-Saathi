@@ -9,7 +9,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P0 (Access & Audit):** Done (offline parts complete; live API keys pending from developer).
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** In Progress. WhatsApp live steps paused due to Meta test account blocker (error 131031: "Business Account locked" on every send). Activated Telegram fallback channel (D-002) for immediate live pipeline development and testing without tunnel requirement.
-- **P3 (Tools, Intent, Grounded Answers):** Not started.
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector & First Grounded Answer) Done (69 unit tests passing). Weather and KCC pending Phase 3B/3C.
 - **P4 (Crop Q&A + Safety):** Not started.
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
 - **P6 (Evaluation + Deploy):** Not started.
@@ -25,13 +25,13 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - User preference persistence (`repositories/user_preferences.py`): tracks last seen language per salted phone hash; unknown-language fallbacks strictly route to pilot primary language (`te-IN` Lavanya).
 - Persistent non-blocking audit events (`repositories/events.py` in SQLite + JSONL); transcripts omitted by default (`STORE_RAW_TRANSCRIPTS=false`).
 - Fully language-aware prompts (empty transcript, audio too long, fallbacks referencing 1551) across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
-- Simulated webhook test script (`backend/scripts/simulate_webhook.py`) for local verification without Meta.
-- Secret scanner (`scripts/scan_secrets.py` / `.ps1`) auditing working tree and git history.
-- Typed `Settings` reading all `.env.example` keys; startup warning on unconfirmed pilot.
-- Gnani Prisma STT & Timbre TTS adapters with explicit timeouts, 429/5xx retries, and language normalization.
-- OpenAI-compatible LLM adapter with zero-dependency echo mode and mandatory model name disclosure.
-- Audio transcoding & chunking service (`to_wav16k`, `wav_to_ogg_opus`, `split_wav`).
-- To run: `pytest backend/tests/` (39 unit tests passing, 5 skipped: 2 live smoke tests + 3 ffmpeg fixtures).
+- Telegram fallback channel adapter & poller (`channels/telegram/`) with token log-redaction filter.
+- Agmarknet daily mandi price connector (`integrations/data_gov/mandi.py`) with pagination, retries on 429/5xx, sanitized source URLs, and normalization to `Evidence` schema.
+- Commodity alias dictionary (`config/commodity_aliases.yaml`) mapping farmer terms in Telugu, Hindi, and English strictly to confirmed dataset strings.
+- Rule-based intent and slot extraction (`services/intent_service.py`) and 10-minute TTL dialogue state repository (`repositories/dialogue_state.py`) supporting multi-turn clarification.
+- Grounded answer composer (`services/answer_composer.py`) enforcing $\le 3$ sentences, strictly verified numbers against `Evidence`, first-turn AI identity disclosure, and daily reported price caveat.
+- LLM adapter supporting `LLM_EXTRA_BODY_JSON` payload merging for Evon inference flags.
+- Complete unit test suite: 69 unit tests passing in ~7s (`pytest backend/tests/unit/`).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -40,10 +40,10 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 | Gnani Timbre TTS | MOCKED | Endpoint & voice mapping coded per docs; live call requires `GNANI_API_KEY`. |
 | Meta Webhook / Send | BLOCKED (Error 131031) | Meta test account returns error 131031 ("Business Account locked"). Handshake & signature verified in mocks. WhatsApp live steps paused. |
 | Telegram Channel | In Development | Fallback channel per D-002; long-polling via Bot API without tunnel. |
-| data.gov.in | MOCKED | Schema placeholder ready; requires `DATA_GOV_API_KEY` live check. |
+| data.gov.in (Agmarknet Mandi) | LIVE Verified | Verified live on 2026-11-04 (HTTP 200, 331 records returned for Telangana; sanitized fixture in `backend/tests/fixtures/mandi_telangana_sample.json`). |
 | Open-Meteo | MOCKED | Schema placeholder ready; implementation in Phase 3. |
 | Evon / LLM | MOCKED | Tested locally in echo mode; live completions require `LLM_BASE_URL`. |
-| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup, events, and user preferences tables verified with `tmp_path`. Ephemeral hosting note: SQLite loses data on redeploy; will move events to Supabase/PostgreSQL in Phase 6. |
+| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup, events, user preferences, and dialogue state tables verified with `tmp_path`. Ephemeral hosting note: SQLite loses data on redeploy; will move events to Supabase/PostgreSQL in Phase 6. |
 
 - **Known issues and risks:** Windows loopback sockets in sandbox mode block synchronous `TestClient` unless running with sandbox bypass or live network. Prisma STT live language code format is unverified (`format unverified` normalization layer in place). **SQLite on Ephemeral Hosting:** Hosting platforms (e.g., Render, Railway without persistent disks) reset local SQLite files on redeployment; audit events and deduplication tables will migrate to managed Supabase/Postgres (`DATABASE_URL`) in Phase 6.
 - **Needs from developer:** Fill `GNANI_API_KEY`, `WHATSAPP_*` credentials in `backend/.env` per `docs/MANUAL_TASKS.md`.
@@ -53,6 +53,25 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ---
 
 ## LOG
+
+### [2026-11-04 16:30] Phase 3A: Mandi Connector & First Grounded Answer Complete
+- **Goal and phase:** Phase 3A. Connected data.gov.in Agmarknet daily mandi prices dataset, built commodity resolver, intent & slot extraction, multi-turn clarification with 10-minute TTL dialogue state, grounded answer composer, and integrated end-to-end with orchestrator.
+- **What changed:**
+  - **Live Agmarknet Mandi API Verified:** Verified live against `https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070` returning HTTP 200 with 331 records for Telangana on 04/11/2026. Documented real facts: no unit field exists (prices described as "price as reported"), dates in `"DD/MM/YYYY"`. Saved sanitized, zero-secret fixture to `backend/tests/fixtures/mandi_telangana_sample.json`.
+  - **Data Gov API Key Redaction:** Updated `TelegramTokenRedactionFilter` and `StructuredJsonFormatter` in `backend/app/core/logging.py` to regex-redact `api-key=[REDACTED]` from all URLs and log records.
+  - **Commodity Aliases (`config/commodity_aliases.yaml` + `commodity_resolver.py`):** Mapped Telugu, Hindi, and English crop names strictly to confirmed Agmarknet canonical strings (Cotton, Paddy, Red Gram, Black Gram, Soyabean, Tomato, Green Chilli, Brinjal, etc.). No hallucinated strings.
+  - **Mandi Connector (`backend/app/integrations/data_gov/mandi.py`):** Built typed query function `fetch_mandi_prices` with pagination, exponential backoff retries on 429/5xx, sanitized source URLs without API keys, date parsing to ISO, safe float price parsing, and normalization to `Evidence` schema contract.
+  - **Dialogue State Repository (`backend/app/repositories/dialogue_state.py`):** Created persistent SQLite repository managing 10-minute TTL context for multi-turn clarification. Isolated via pytest `tmp_path` in `conftest.py`.
+  - **Intent & Slot Extraction (`backend/app/services/intent_service.py`):** Rule-based intent classifier supporting `mandi_price_query`, `greeting_or_help`, and `unsupported_or_unclear`. Identifies missing commodity slots and flags clarification requirement.
+  - **Grounded Answer Composer (`backend/app/services/answer_composer.py`):** Formats strictly verified responses in user's language ($\le 3$ sentences, verified numbers against `Evidence`, AI identity disclaimer on first turn, daily reported price caveat, and staleness warning if $> 3$ days). Formats currency cleanly (`రూపాయలు`, `रुपये`, `Rs`) to avoid abbreviation dot splitting.
+  - **LLM Extra Body Support:** Added `LLM_EXTRA_BODY_JSON` to `Settings`, `.env.example`, and merged into completion payload for Evon generation flags.
+  - **Orchestrator Integration (`backend/app/services/orchestrator.py`):** Wired `extract_intent`, `fetch_mandi_prices`, and `compose_mandi_answer` into both `handle_voice_message` and `handle_text_message`.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_mandi_connector.py`: 14 passed in 1.20s.
+  - `pytest backend/tests/unit/`: 69 passed, 0 failed in 6.90s.
+  - `ruff check backend/ scripts/`: All checks passed!
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 69 passed (1 live fixture verified + 68 mocked), 0 failed.
 
 ### [2026-11-04 15:20] Telegram Poller Import Fix & Token Log Redaction
 - **Goal and phase:** Phase 2 Telegram pre-live hardening. Fixed runner script logger import and hardened token privacy against HTTP client URL leaks.

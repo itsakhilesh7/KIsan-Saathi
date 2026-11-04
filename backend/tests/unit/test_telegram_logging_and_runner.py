@@ -66,3 +66,25 @@ def test_captured_log_never_emits_bot_token():
     assert fake_token not in output
     assert "/bot[REDACTED]/sendMessage" in output
     assert "/bot[REDACTED]/getMe" in output
+
+
+def test_captured_log_never_emits_data_gov_api_key():
+    """End-to-end log emission test verifying api-key=... query param is always redacted."""
+    fake_key = "579b464db66ec23bdda387c7a307b28c61a4635931309141e6b480cd"
+    raw_query = f"GET https://api.data.gov.in/resource/9ef84268?api-key={fake_key}&format=json"
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(StructuredJsonFormatter())
+    handler.addFilter(TelegramTokenRedactionFilter())
+
+    logger = logging.getLogger("test_datagov_redaction")
+    logger.setLevel(logging.INFO)
+    logger.handlers = [handler]
+    logger.propagate = False
+
+    logger.info("Executing outbound request: %s", raw_query)
+
+    output = stream.getvalue()
+    assert fake_key not in output
+    assert "api-key=[REDACTED]" in output

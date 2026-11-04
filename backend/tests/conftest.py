@@ -6,6 +6,7 @@ import backend.app.channels.telegram.poller as tg_poller
 import backend.app.channels.whatsapp.webhook as wa_webhook
 import backend.app.services.orchestrator as orch
 from backend.app.repositories.deduplication import InMemoryDeduplicationRepository
+from backend.app.repositories.dialogue_state import DialogueStateRepository
 from backend.app.repositories.events import EventRepository
 from backend.app.repositories.user_preferences import SQLiteUserPreferencesRepository
 
@@ -20,10 +21,14 @@ def isolate_databases_and_logs(tmp_path, monkeypatch):
     tmp_user_pref = SQLiteUserPreferencesRepository(
         db_path=str(tmp_path / "test_user_preferences.sqlite3"),
     )
+    tmp_dialogue = DialogueStateRepository(
+        db_path=str(tmp_path / "test_dialogue_state.sqlite3"),
+    )
     tmp_dedup = InMemoryDeduplicationRepository()
 
     monkeypatch.setattr(orch, "_event_repo", tmp_events)
     monkeypatch.setattr(orch, "_user_pref_repo", tmp_user_pref)
+    monkeypatch.setattr(orch, "_dialogue_repo", tmp_dialogue)
     monkeypatch.setattr(wa_webhook, "_dedup_repo", tmp_dedup)
     monkeypatch.setattr(tg_poller, "_dedup_repo", tmp_dedup)
 

@@ -5,6 +5,7 @@ The model name used is ALWAYS disclosed per rules.md.
 """
 
 import asyncio
+import json
 import logging
 
 import httpx
@@ -70,6 +71,15 @@ class OpenAICompatibleLLM(LLMAdapter):
             "temperature": 0.2,
             "max_tokens": 300,
         }
+
+        # Merge optional extra body fields (e.g. for Evon: chat_template_kwargs, repetition_penalty, top_p)
+        if self.settings.LLM_EXTRA_BODY_JSON.strip():
+            try:
+                extra = json.loads(self.settings.LLM_EXTRA_BODY_JSON.strip())
+                if isinstance(extra, dict):
+                    body.update(extra)
+            except Exception as e:
+                log.warning("Failed to parse LLM_EXTRA_BODY_JSON: %s", e)
 
         endpoint = f"{self.settings.LLM_BASE_URL.rstrip('/')}/chat/completions"
 

@@ -3,10 +3,15 @@
 Allowlist for factual data. Status values: `discovered`, `schema_verified`, `live_tested`, `reviewed`, `approved_for_mvp`, `deprecated`. Update the status as you go; the agent must not use a source below `live_tested` in user-facing answers.
 
 ## 1. Mandi prices
-- **Source:** data.gov.in "Current Daily Price of Various Commodities from Various Markets (Mandi)" (Agmarknet). Resource ID in `.env.example` (`9ef84268-d588-465a-a308-a864a43d0070`) is **commonly cited but must be verified** against the live resource metadata.
-- **API:** `https://api.data.gov.in/resource/<id>?api-key=<key>&format=json&offset=0&limit=N` plus `filters[...]` where supported. Needs a free key from the data.gov.in account page.
-- **Verify before coding:** field names, filter names, pagination, date format, whether prices are per quintal, which price fields exist (min/max/modal), whether pilot markets and crops appear, and how often.
-- **Rules:** not every market reports daily; a record is a reported wholesale price, not a guaranteed offer; display commodity, variety, market, district, date, price type, unit, source URL, retrieved-at. Status: `discovered`.
+- **Source:** data.gov.in "Current Daily Price of Various Commodities from Various Markets (Mandi)" (Agmarknet). Resource ID in `.env.example` (`9ef84268-d588-465a-a308-a864a43d0070`) is **verified live on 2026-11-04**.
+- **API:** `https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070?api-key=<key>&format=json&offset=0&limit=N` plus `filters[...]` (e.g. `filters[state]=Telangana`, `filters[district]=Warangal`, `filters[commodity]=Cotton`).
+- **Verified Facts (2026-11-04 live call):**
+  - Record fields returned: `state`, `district`, `market`, `commodity`, `variety`, `grade`, `arrival_date` (format `"DD/MM/YYYY"`), `min_price`, `max_price`, `modal_price` (integers/floats).
+  - There is NO unit field in the JSON response. Do not default or assume the unit. Coded as "price as reported".
+  - State name for Telangana is spelled `"Telangana"`.
+  - Pagination works via `offset` and `limit`.
+- **Rules:** Not every market reports daily; records represent reported wholesale prices, not guaranteed continuous live quotes. Answers must display commodity, market, district, arrival date, price type, and caveats. Stale warning added if record is older than 3 days.
+- **Status:** `live_tested` (Verified live with active key on 2026-11-04; sanitized fixture in `backend/tests/fixtures/mandi_telangana_sample.json`).
 
 ## 2. Weather
 - **Source:** Open-Meteo Forecast API, `https://api.open-meteo.com/v1/forecast` (free, no key; check terms for the demo). Request only needed variables; set coordinates and timezone (Asia/Kolkata) from `config/pilot.yaml`. Store retrieved-at and horizon. Forecast is not observation. Status: `discovered`.

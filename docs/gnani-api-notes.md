@@ -32,7 +32,10 @@ Returns binary audio (`200 OK`, e.g. `audio/wav`). Streaming SSE: `POST /api/v1/
 **Voice cloning** (not in MVP): `POST /api/v1/tts/voice-clone/embeddings` (field `audio_file`, 5 to 30 s) returns a `speaker_embedding`; synthesise with `model: "vachana-vc-v1"` plus the embedding. Needs explicit consent if ever used.
 
 ## LLM: Evon
-Model card name: `gnani/gnani-evon-v3.3-30B-A3B` (hybrid Mamba MoE, about 30B total / 3B active, 10 Indian languages + English, 128K context, Apache 2.0). Running it needs roughly 21 GB VRAM even quantised (Q4). **Unverified: whether Gnani exposes Evon through the hosted API.** Plan: OpenAI-compatible endpoint served by vLLM/SGLang on a rented GPU, or a hosted provider that lists it. Always record which model answered.
+Model card name: `gnani/gnani-evon-v3.3-30B-A3B` (hybrid Mamba MoE, about 30B total / 3B active, 10 Indian languages + English, 128K context, Apache 2.0). Running it needs roughly 21 GB VRAM even quantised (Q4).
+- **Naming note:** Friendli lists the model as `gnani/gnani-evon-v3.3-30B-A3B` (dedicated endpoints only); the Hugging Face model card quick-start uses `gnani/gnani-evon-v3.3`. The setting `LLM_MODEL` must equal the exact served model name expected by the host endpoint.
+- **Generation params (Evon specific):** Supports `LLM_EXTRA_BODY_JSON` for extra generation fields: `{"chat_template_kwargs": {"enable_thinking": false}, "repetition_penalty": 1.1, "top_p": 0.95}`.
+- Always record `LLM_DISCLOSED_NAME` in every event log and eval output. Plan: OpenAI-compatible endpoint served by vLLM/SGLang on a rented GPU, or a hosted provider that lists it. Always record which model answered.
 
 ## Python/SDK
 Other documents mention a `gnani-vachana` SDK. It is **unverified**; our adapters use REST directly with `httpx`. If you adopt the SDK, check its installed version and README first.

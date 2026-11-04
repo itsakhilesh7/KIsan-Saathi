@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gnani/gnani-evon-v3.3-30B-A3B"
     LLM_DISCLOSED_NAME: str = ""
+    LLM_EXTRA_BODY_JSON: str = ""
 
     # ---- WhatsApp Cloud API ----
     WHATSAPP_PHONE_NUMBER_ID: str = ""

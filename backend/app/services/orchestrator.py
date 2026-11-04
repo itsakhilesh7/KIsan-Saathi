@@ -16,12 +16,17 @@ from ..channels.base import ChannelClient, WhatsAppChannelClient
 from ..core.config import Settings, get_settings
 from ..core.logging import get_request_id, hash_phone
 from ..core.security import validate_media_type
+from ..integrations.data_gov.mandi import fetch_mandi_prices
 from ..integrations.gnani import stt as gnani_stt
 from ..integrations.gnani import tts as gnani_tts
 from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
+from ..repositories.dialogue_state import DialogueStateRepository
 from ..repositories.events import EventRepository
 from ..repositories.user_preferences import SQLiteUserPreferencesRepository
+from ..schemas.intent import IntentType
 from . import audio_service
+from .answer_composer import compose_clarification_reply, compose_mandi_answer
+from .intent_service import extract_intent
 
 log = logging.getLogger("orchestrator")
 
@@ -56,6 +61,7 @@ UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {
 
 _event_repo: EventRepository | None = None
 _user_pref_repo: SQLiteUserPreferencesRepository | None = None
+_dialogue_repo: DialogueStateRepository | None = None
 
 
 def get_event_repo() -> EventRepository:
@@ -84,6 +90,20 @@ def set_user_pref_repo(repo: SQLiteUserPreferencesRepository | None) -> None:
     """Allows tests to inject a temporary user preferences repository."""
     global _user_pref_repo
     _user_pref_repo = repo
+
+
+def get_dialogue_repo() -> DialogueStateRepository:
+    """Returns the dialogue state repository instance, lazily initializing if needed."""
+    global _dialogue_repo
+    if _dialogue_repo is None:
+        _dialogue_repo = DialogueStateRepository()
+    return _dialogue_repo
+
+
+def set_dialogue_repo(repo: DialogueStateRepository | None) -> None:
+    """Allows tests to inject a temporary dialogue state repository."""
+    global _dialogue_repo
+    _dialogue_repo = repo
 
 
 def _resolve_user_language(user_hash: str, explicit_lang: str | None, settings: Settings) -> str:
@@ -169,6 +189,7 @@ async def handle_voice_message(
 
             transcript = stt_res.get("transcript", "").strip()
             raw_detected_lang = stt_res.get("detected_language_code")
+            is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
             if raw_detected_lang:
                 detected_lang = raw_detected_lang
                 get_user_pref_repo().set_language(phone_hash, detected_lang)
@@ -189,10 +210,41 @@ async def handle_voice_message(
                 })
                 return
 
-            # Stage 3: LLM reasoning
+            # Stage 3: Intent extraction & Grounded Answering / LLM reasoning
             s = time.perf_counter()
-            llm_adapter = OpenAICompatibleLLM(settings=settings)
-            reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
+            parsed = extract_intent(
+                transcript,
+                language=detected_lang,
+                user_hash=phone_hash,
+                dialogue_repo=get_dialogue_repo(),
+            )
+
+            if parsed.intent == IntentType.MANDI_PRICE_QUERY:
+                if parsed.clarification_needed:
+                    reply_text = compose_clarification_reply(language=detected_lang, is_first_turn=is_first_turn)
+                    disclosed_model = "grounded/dialogue_clarification"
+                else:
+                    evidence = await fetch_mandi_prices(
+                        commodity=parsed.slots.commodity,
+                        district=parsed.slots.district,
+                        state=parsed.slots.state or "Telangana",
+                        settings=settings,
+                    )
+                    reply_text = compose_mandi_answer(evidence, language=detected_lang, is_first_turn=is_first_turn)
+                    disclosed_model = "grounded/agmarknet_mandi"
+            elif parsed.intent == IntentType.GREETING_OR_HELP:
+                greetings = {
+                    "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరలు లేదా వ్యవసాయ సమాచారం గురించి అడగవచ్చు.",
+                    "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव या खेती से जुड़ी जानकारी पूछ सकते हैं।",
+                    "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices or farming queries.",
+                    "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices ya farming queries pooch sakte hain.",
+                }
+                reply_text = greetings.get(detected_lang, greetings["te-IN"])
+                disclosed_model = "rule_based/greeting"
+            else:
+                llm_adapter = OpenAICompatibleLLM(settings=settings)
+                reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
+
             timings["llm"] = round(time.perf_counter() - s, 2)
 
             # Stage 4: Timbre Text-to-Speech
@@ -270,8 +322,41 @@ async def handle_text_message(
         return
 
     try:
-        llm_adapter = OpenAICompatibleLLM(settings=settings)
-        reply, disclosed_model = await llm_adapter.answer(text)
+        user_lang = _resolve_user_language(phone_hash, None, settings)
+        is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
+        parsed = extract_intent(
+            text,
+            language=user_lang,
+            user_hash=phone_hash,
+            dialogue_repo=get_dialogue_repo(),
+        )
+
+        if parsed.intent == IntentType.MANDI_PRICE_QUERY:
+            if parsed.clarification_needed:
+                reply = compose_clarification_reply(language=user_lang, is_first_turn=is_first_turn)
+                disclosed_model = "grounded/dialogue_clarification"
+            else:
+                evidence = await fetch_mandi_prices(
+                    commodity=parsed.slots.commodity,
+                    district=parsed.slots.district,
+                    state=parsed.slots.state or "Telangana",
+                    settings=settings,
+                )
+                reply = compose_mandi_answer(evidence, language=user_lang, is_first_turn=is_first_turn)
+                disclosed_model = "grounded/agmarknet_mandi"
+        elif parsed.intent == IntentType.GREETING_OR_HELP:
+            greetings = {
+                "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరలు లేదా వ్యవసాయ సమాచారం గురించి అడగవచ్చు.",
+                "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव या खेती से जुड़ी जानकारी पूछ सकते हैं।",
+                "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices or farming queries.",
+                "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices ya farming queries pooch sakte hain.",
+            }
+            reply = greetings.get(user_lang, greetings["te-IN"])
+            disclosed_model = "rule_based/greeting"
+        else:
+            llm_adapter = OpenAICompatibleLLM(settings=settings)
+            reply, disclosed_model = await llm_adapter.answer(text, lang=user_lang)
+
         await channel.send_text(sender_phone, reply)
         await get_event_repo().log_event({
             "request_id": req_id,

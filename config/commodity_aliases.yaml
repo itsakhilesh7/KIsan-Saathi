@@ -1,0 +1,94 @@
+# Mapping of farmer words (Telugu, Hindi, English/Hinglish) to canonical Agmarknet dataset commodity names.
+# Built ONLY from values confirmed in live data.gov.in data.
+# Unknown commodity words MUST NOT be hallucinated; they must trigger a clarification question.
+
+aliases:
+  Cotton:
+    en: ["cotton", "kapas"]
+    te: ["పత్తి", "ప్రత్తి", "పత్తి పంట"]
+    hi: ["कपास", "रुई", "कपास की फसल"]
+
+  Paddy(Common):
+    en: ["paddy", "rice", "common paddy", "dhan"]
+    te: ["వరి", "ధాన్యం", "వరి ధాన్యం", "వరి పంట", "సాధారణ వరి"]
+    hi: ["धान", "चावल", "साधारण धान"]
+
+  Paddy(Fine/Superfine/Grade A):
+    en: ["fine paddy", "superfine paddy", "grade a paddy", "basmati", "fine rice"]
+    te: ["సన్న వరి", "సన్న రకం వరి", "గ్రేడ్ ఎ వరి", "సూపర్‌ఫైన్ వరి"]
+    hi: ["महीन धान", "सुपरफाइन धान", "बासमती"]
+
+  Red gram/Arhar/Tur(whole):
+    en: ["red gram", "arhar", "tur", "toor", "pigeon pea", "kandi"]
+    te: ["కందులు", "కంది", "కంది పప్పు", "కంది పంట"]
+    hi: ["अरहर", "तुअर", "तूर", "अरहर दाल"]
+
+  Black Gram Dal(Urd Dal):
+    en: ["black gram", "urad", "minumulu", "black gram dal"]
+    te: ["మినుములు", "మినుము", "మినప", "మినప పప్పు"]
+    hi: ["उड़द", "उड़द दाल", "काली दाल"]
+
+  Soyabean:
+    en: ["soyabean", "soybean", "soya"]
+    te: ["సోయాబీన్", "సోయా", "సోయా చిక్కుడు"]
+    hi: ["सोयाबीन", "सोया"]
+
+  Tomato:
+    en: ["tomato", "tamatar"]
+    te: ["టమాట", "టమాటో", "టమాటా", "రామములగకాయ"]
+    hi: ["टमाटर"]
+
+  Green Chilli:
+    en: ["green chilli", "chilli", "mirchi"]
+    te: ["పచ్చిమిర్చి", "మిర్చి", "మిరపకాయ", "పచ్చి మిరప"]
+    hi: ["हरी मिर्च", "मिर्च", "मिर्ची"]
+
+  Brinjal:
+    en: ["brinjal", "eggplant", "aubergine", "baingan"]
+    te: ["వంకాయ", "గుత్తి వంకాయ"]
+    hi: ["बैंगन", "भटा"]
+
+  Ladies Finger:
+    en: ["ladies finger", "okra", "bhindi"]
+    te: ["బెండకాయ", "బెండ"]
+    hi: ["भिंडी", "ओकरा"]
+
+  Potato:
+    en: ["potato", "aloo"]
+    te: ["బంగాళాదుంప", "ఆలూ", "ఉర్లగడ్డ"]
+    hi: ["आलू"]
+
+  Ginger(Green):
+    en: ["ginger", "green ginger", "adrak"]
+    te: ["అల్లం", "పచ్చి అల్లం"]
+    hi: ["अदरक", "गीली अदरक"]
+
+  Sesamum(Sesame,Gingelly,Til):
+    en: ["sesame", "til", "gingelly", "sesamum"]
+    te: ["నువ్వులు", "నువ్వు"]
+    hi: ["तिल", "सफेद तिल", "काला तिल"]
+
+  Bitter gourd:
+    en: ["bitter gourd", "karela"]
+    te: ["కాకరకాయ", "కాకర"]
+    hi: ["करेला"]
+
+  Bottle gourd:
+    en: ["bottle gourd", "lauki"]
+    te: ["సొరకాయ", "ఆనపకాయ"]
+    hi: ["लौकी", "घिया"]
+
+  Cabbage:
+    en: ["cabbage", "patta gobhi"]
+    te: ["క్యాబేజీ", "క్యాబేజి"]
+    hi: ["పత్తా గోబీ", "బంద్‌గోబీ"]
+
+  Cauliflower:
+    en: ["cauliflower", "phool gobhi"]
+    te: ["క్యాలీఫ్లవర్", "గోబీ పువ్వు"]
+    hi: ["फूल गोभी", "गोभी"]
+
+  Cluster beans:
+    en: ["cluster beans", "guar", "gawar"]
+    te: ["గోరుచిక్కుడు", "గోరు చిక్కుడు"]
+    hi: ["ग्वार", "ग्वार फली"]
