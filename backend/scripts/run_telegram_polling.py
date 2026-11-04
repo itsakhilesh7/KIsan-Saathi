@@ -12,6 +12,13 @@ import logging
 import signal
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from backend.app.channels.telegram.poller import run_polling
 from backend.app.core.config import get_settings
 from backend.app.core.logging import setup_logging
@@ -22,8 +29,9 @@ log = logging.getLogger("telegram.runner")
 async def main() -> None:
     setup_logging(level=logging.INFO)
     settings = get_settings()
+    token = settings.TELEGRAM_BOT_TOKEN.strip().strip("<>").strip()
 
-    if not settings.TELEGRAM_BOT_TOKEN:
+    if not token:
         print("\n[!] ERROR: TELEGRAM_BOT_TOKEN is not configured in backend/.env or environment.")
         print("To create a Telegram bot for local testing:")
         print("  1. Open Telegram and message @BotFather.")
@@ -33,7 +41,7 @@ async def main() -> None:
         sys.exit(1)
 
     print("=" * 60)
-    print("🌾 Kisan Saathi - Telegram Polling Mode (D-002 Active)")
+    print("[*] Kisan Saathi - Telegram Polling Mode (D-002 Active)")
     print(f"[*] Pilot Primary Language: {settings.pilot_primary_language}")
     print(f"[*] LLM Mode: {settings.llm_mode} ({settings.LLM_MODEL})")
     print(f"[*] STT Model: {settings.STT_MODEL} ({settings.STT_LANGUAGE})")

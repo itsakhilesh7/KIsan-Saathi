@@ -124,6 +124,12 @@ class StructuredJsonFormatter(logging.Formatter):
 
 def setup_logging(level: int = logging.INFO) -> None:
     """Initializes the structured JSON logger with security filters."""
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     redaction_filter = TelegramTokenRedactionFilter()
 
     handler = logging.StreamHandler(sys.stdout)

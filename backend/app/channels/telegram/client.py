@@ -41,7 +41,7 @@ class TelegramChannelClient:
         return self._http_client or get_http_client()
 
     def _get_bot_token(self) -> str:
-        token = self.settings.TELEGRAM_BOT_TOKEN.strip()
+        token = self.settings.TELEGRAM_BOT_TOKEN.strip().strip("<>").strip()
         if not token:
             raise TelegramAPIError("TELEGRAM_BOT_TOKEN is not configured in Settings or backend/.env.")
         return token
