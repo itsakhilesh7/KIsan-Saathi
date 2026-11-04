@@ -42,3 +42,4 @@ class WhatsAppChannelClient:
     async def send_audio_bytes(self, to: str, audio_bytes: bytes) -> Any:
         reply_media_id = await wa_client.upload_audio(audio_bytes, settings=self.settings)
         return await wa_client.send_audio(to, reply_media_id, settings=self.settings)
+

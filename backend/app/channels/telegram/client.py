@@ -146,3 +146,4 @@ class TelegramChannelClient:
         files = {"voice": ("voice.ogg", audio_bytes, "audio/ogg")}
         res = await self._request_with_retry("POST", url, data=data, files=files, timeout=60.0)
         return res.json()
+

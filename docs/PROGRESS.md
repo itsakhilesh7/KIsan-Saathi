@@ -70,8 +70,9 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
   - `ruff check backend/ scripts/`: All checks passed!
   - `python scripts/scan_secrets.py`: [OK] CLEAN.
 - **Tests:** 50 passed (MOCKED), 0 failed.
-- **Git commit hash and message:** (Pending commit).
-- **Goal and phase:** Phase 1.7 small fix pass before Phase 2.
+- **Git commit hash and message:** Commit `a572049` ("feat(channels): add Telegram Bot channel adapter and polling runner under D-002").
+
+### [2026-11-02 09:55] Phase 1.7 Fix Pass Complete
 - **What changed:**
   - **Item 1 (.env.example & Settings parity):** Set `AUDIO_MAX_SECONDS=60` and synchronized all keys and defaults with `Settings`. Added unit test `test_env_example_matches_settings.py` checking bidirectional key parity and default equality.
   - **Item 2 (Single repo-root virtual environment):** Created root virtual environment `.venv/` and installed all requirements. Updated `docs/PHASE2_CHECKLIST.md`, `scripts/scan_secrets.ps1`, and `README.md`. Removed redundant `existing-code/.venv`.
