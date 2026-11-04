@@ -7,8 +7,8 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ### Phase Status (P0..P8)
 - **P0 (Access & Audit):** Done (offline parts complete; live API keys pending from developer).
-- **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5 & Phase 1.6 complete; 37 unit tests passing).
-- **P2 (WhatsApp Live Loop):** Ready to start (manual setup steps documented in `docs/PHASE2_CHECKLIST.md`; awaiting developer credentials).
+- **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
+- **P2 (Live Loop / Telegram Channel Fallback):** In Progress. WhatsApp live steps paused due to Meta test account blocker (error 131031: "Business Account locked" on every send). Activated Telegram fallback channel (D-002) for immediate live pipeline development and testing without tunnel requirement.
 - **P3 (Tools, Intent, Grounded Answers):** Not started.
 - **P4 (Crop Q&A + Safety):** Not started.
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
@@ -38,7 +38,8 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 |---|---|---|
 | Gnani Prisma STT | MOCKED | Endpoint & headers coded per docs; live call requires `GNANI_API_KEY`. |
 | Gnani Timbre TTS | MOCKED | Endpoint & voice mapping coded per docs; live call requires `GNANI_API_KEY`. |
-| Meta Webhook | MOCKED | Handshake & signature verified with fixtures; live loop requires Meta setup. |
+| Meta Webhook / Send | BLOCKED (Error 131031) | Meta test account returns error 131031 ("Business Account locked"). Handshake & signature verified in mocks. WhatsApp live steps paused. |
+| Telegram Channel | In Development | Fallback channel per D-002; long-polling via Bot API without tunnel. |
 | data.gov.in | MOCKED | Schema placeholder ready; requires `DATA_GOV_API_KEY` live check. |
 | Open-Meteo | MOCKED | Schema placeholder ready; implementation in Phase 3. |
 | Evon / LLM | MOCKED | Tested locally in echo mode; live completions require `LLM_BASE_URL`. |
@@ -53,7 +54,23 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
-### [2026-11-02 09:55] Phase 1.7 Fix Pass Complete
+### [2026-11-04 10:50] Telegram Channel Implementation (D-002 Fallback Active)
+- **Goal and phase:** Phase 2 WhatsApp Live Loop fallback: Meta test account returned error 131031 ("Business Account locked"). Activated D-002 Telegram fallback channel to unblock live voice/text loop without requiring a public webhook tunnel.
+- **What changed:**
+  - **ChannelClient Protocol (`backend/app/channels/base.py`):** Created minimal abstract channel interface (`download_media`, `send_text`, `send_audio_bytes`) and implemented `WhatsAppChannelClient`.
+  - **Orchestrator Refactor (`backend/app/services/orchestrator.py`):** Made `handle_voice_message`, `handle_text_message`, and `handle_incoming_message` channel-agnostic by taking optional `ChannelClient`, defaulting to `WhatsAppChannelClient` to keep 100% backward compatibility with existing tests. Logged audit events record the dynamic `channel` name (`whatsapp` or `telegram`).
+  - **Telegram Bot Client (`backend/app/channels/telegram/client.py`):** Implemented `TelegramChannelClient` using `httpx`. Implements streaming voice download via `getFile` with `AUDIO_MAX_MB` guard, `sendMessage` (truncated to 4000 chars), and `sendVoice` (native OGG/Opus voice note with waveform). Redacts bot tokens in logs.
+  - **Telegram Poller (`backend/app/channels/telegram/poller.py`):** Parses native voice notes and text messages, hashes user IDs with `PHONE_HASH_SALT`, enforces deduplication by `f"tg_{update_id}"`, and dispatches to orchestrator.
+  - **Local Runner (`backend/scripts/run_telegram_polling.py`):** Added long-polling CLI runner (`getUpdates`) for tunnel-free local development with graceful `Ctrl+C` shutdown.
+  - **Configuration & Parity:** Added `TELEGRAM_BOT_TOKEN` to `Settings`, `.env.example`, and `health.py` config presence booleans. Updated `test_env_example_matches_settings.py`.
+  - **Unit Tests (`backend/tests/unit/test_telegram_channel.py`):** Added 8 unit tests covering parsing (text, voice, unsupported), `send_text`, `send_audio_bytes`, streaming media download, deduplication by update_id, and mocked end-to-end voice pipeline routing.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_telegram_channel.py`: 8 passed in 0.79s.
+  - `pytest backend/tests/unit/`: 50 passed in 5.54s (42 original + 8 new).
+  - `ruff check backend/ scripts/`: All checks passed!
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 50 passed (MOCKED), 0 failed.
+- **Git commit hash and message:** (Pending commit).
 - **Goal and phase:** Phase 1.7 small fix pass before Phase 2.
 - **What changed:**
   - **Item 1 (.env.example & Settings parity):** Set `AUDIO_MAX_SECONDS=60` and synchronized all keys and defaults with `Settings`. Added unit test `test_env_example_matches_settings.py` checking bidirectional key parity and default equality.

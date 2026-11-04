@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     WA_API_VERSION: str = "v23.0"
 
+    # ---- Telegram (fallback channel per D-002) ----
+    TELEGRAM_BOT_TOKEN: str = ""
+
     # ---- data.gov.in ----
     DATA_GOV_API_KEY: str = ""
     DATA_GOV_BASE_URL: str = "https://api.data.gov.in/resource"

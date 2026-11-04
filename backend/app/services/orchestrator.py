@@ -12,7 +12,7 @@ import tempfile
 import time
 from typing import Any
 
-from ..channels.whatsapp import client as wa_client
+from ..channels.base import ChannelClient, WhatsAppChannelClient
 from ..core.config import Settings, get_settings
 from ..core.logging import get_request_id, hash_phone
 from ..core.security import validate_media_type
@@ -96,8 +96,13 @@ def _resolve_user_language(user_hash: str, explicit_lang: str | None, settings: 
     return settings.pilot_primary_language
 
 
-async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
+async def handle_voice_message(
+    msg: dict[str, Any],
+    settings: Settings,
+    client: ChannelClient | None = None,
+) -> None:
     """Orchestrates end-to-end voice note pipeline with per-stage timing."""
+    channel = client or WhatsAppChannelClient(settings=settings)
     timings: dict[str, float] = {}
     start_total = time.perf_counter()
     detected_lang: str | None = None
@@ -116,11 +121,11 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         log.warning("Rejected unsupported media MIME type '%s' from user=%s", mime_type, phone_hash)
         fallback_lang = _resolve_user_language(phone_hash, None, settings)
         unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(fallback_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
-        await wa_client.send_text(sender_phone, unsupported_msg, settings=settings)
+        await channel.send_text(sender_phone, unsupported_msg)
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
-            "channel": "whatsapp",
+            "channel": channel.channel_name,
             "status": "rejected_mime",
         })
         return
@@ -134,7 +139,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
 
             # Stage 1: Download & convert incoming audio (enforces AUDIO_MAX_MB)
             s = time.perf_counter()
-            audio_bytes = await wa_client.download_media(media_id, settings=settings)
+            audio_bytes = await channel.download_media(media_id)
             with open(in_ogg, "wb") as f:
                 f.write(audio_bytes)
 
@@ -147,11 +152,11 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
                 log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, settings.AUDIO_MAX_SECONDS, phone_hash)
                 fallback_lang = _resolve_user_language(phone_hash, None, settings)
                 too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(fallback_lang, AUDIO_TOO_LONG_MESSAGES["te-IN"])
-                await wa_client.send_text(sender_phone, too_long_msg, settings=settings)
+                await channel.send_text(sender_phone, too_long_msg)
                 await get_event_repo().log_event({
                     "request_id": req_id,
                     "user_hash": phone_hash,
-                    "channel": "whatsapp",
+                    "channel": channel.channel_name,
                     "status": "rejected_duration",
                     "timings": timings,
                 })
@@ -173,11 +178,11 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             if not transcript:
                 log.info("Empty transcript returned for user=%s", phone_hash)
                 clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["te-IN"])
-                await wa_client.send_text(sender_phone, clarification, settings=settings)
+                await channel.send_text(sender_phone, clarification)
                 await get_event_repo().log_event({
                     "request_id": req_id,
                     "user_hash": phone_hash,
-                    "channel": "whatsapp",
+                    "channel": channel.channel_name,
                     "detected_language": detected_lang,
                     "status": "empty_transcript",
                     "timings": timings,
@@ -204,11 +209,10 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
             with open(out_ogg, "rb") as f:
                 ogg_reply_bytes = f.read()
 
-            reply_media_id = await wa_client.upload_audio(ogg_reply_bytes, settings=settings)
-            await wa_client.send_audio(sender_phone, reply_media_id, settings=settings)
+            await channel.send_audio_bytes(sender_phone, ogg_reply_bytes)
 
             if settings.SEND_TEXT_COPY:
-                await wa_client.send_text(sender_phone, reply_text, settings=settings)
+                await channel.send_text(sender_phone, reply_text)
 
             timings["upload_send"] = round(time.perf_counter() - s, 2)
 
@@ -218,7 +222,7 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
-            "channel": "whatsapp",
+            "channel": channel.channel_name,
             "detected_language": detected_lang,
             "model_name": disclosed_model,
             "timings": timings,
@@ -236,22 +240,27 @@ async def handle_voice_message(msg: dict[str, Any], settings: Settings) -> None:
         err_lang = _resolve_user_language(phone_hash, detected_lang, settings)
         fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
         try:
-            await wa_client.send_text(sender_phone, fallback_msg, settings=settings)
+            await channel.send_text(sender_phone, fallback_msg)
         except Exception:
             log.exception("Failed to deliver fallback error message to user")
 
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
-            "channel": "whatsapp",
+            "channel": channel.channel_name,
             "detected_language": detected_lang,
             "status": "error",
             "timings": timings,
         })
 
 
-async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
+async def handle_text_message(
+    msg: dict[str, Any],
+    settings: Settings,
+    client: ChannelClient | None = None,
+) -> None:
     """Processes inbound text message query."""
+    channel = client or WhatsAppChannelClient(settings=settings)
     sender_phone = msg.get("from") or ""
     phone_hash = hash_phone(sender_phone, settings.PHONE_HASH_SALT)
     text = msg.get("text", "")
@@ -263,11 +272,11 @@ async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
     try:
         llm_adapter = OpenAICompatibleLLM(settings=settings)
         reply, disclosed_model = await llm_adapter.answer(text)
-        await wa_client.send_text(sender_phone, reply, settings=settings)
+        await channel.send_text(sender_phone, reply)
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
-            "channel": "whatsapp",
+            "channel": channel.channel_name,
             "model_name": disclosed_model,
             "status": "ok",
             "transcript": text if settings.STORE_RAW_TRANSCRIPTS else None,
@@ -278,20 +287,25 @@ async def handle_text_message(msg: dict[str, Any], settings: Settings) -> None:
         err_lang = _resolve_user_language(phone_hash, None, settings)
         fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
         try:
-            await wa_client.send_text(sender_phone, fallback_msg, settings=settings)
+            await channel.send_text(sender_phone, fallback_msg)
         except Exception:
             log.exception("Failed to deliver fallback text")
 
 
-async def handle_incoming_message(msg: dict[str, Any], settings: Settings | None = None) -> None:
+async def handle_incoming_message(
+    msg: dict[str, Any],
+    settings: Settings | None = None,
+    client: ChannelClient | None = None,
+) -> None:
     """Entry point router for background message processing."""
     cfg = settings or get_settings()
+    channel = client or WhatsAppChannelClient(settings=cfg)
     msg_type = msg.get("type")
 
     if msg_type == "audio" and msg.get("media_id"):
-        await handle_voice_message(msg, cfg)
+        await handle_voice_message(msg, cfg, client=channel)
     elif msg_type == "text":
-        await handle_text_message(msg, cfg)
+        await handle_text_message(msg, cfg, client=channel)
     else:
         sender_phone = msg.get("from")
         if sender_phone:
@@ -299,6 +313,6 @@ async def handle_incoming_message(msg: dict[str, Any], settings: Settings | None
                 phone_hash = hash_phone(sender_phone, cfg.PHONE_HASH_SALT)
                 user_lang = _resolve_user_language(phone_hash, None, cfg)
                 unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(user_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
-                await wa_client.send_text(sender_phone, unsupported_msg, settings=cfg)
+                await channel.send_text(sender_phone, unsupported_msg)
             except Exception:
                 log.exception("Failed to send unsupported message notification")

@@ -63,6 +63,7 @@ ALLOWLIST_VALUES = {
     "your_gnani_api_key_from_app_gnani_ai",
     "choose_a_random_string",
     "your_custom_salt_here",
+    "mock_bot_token_12345",
 }
 
 EXCLUDE_DIRS = {
@@ -107,7 +108,14 @@ def scan_working_tree(repo_root: Path) -> list[str]:
             if path.suffix in EXCLUDE_EXTENSIONS:
                 continue
             if path.name == ".env":
-                findings.append(f"[WORKING TREE] Real .env file detected at: {path}")
+                # Check if file is tracked/staged by Git
+                res = subprocess.run(
+                    ["git", "ls-files", "--error-unmatch", str(path)],
+                    capture_output=True,
+                    check=False,
+                )
+                if res.returncode == 0:
+                    findings.append(f"[WORKING TREE] Tracked .env file detected in Git at: {path}")
                 continue
 
             try:

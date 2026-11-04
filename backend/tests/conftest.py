@@ -2,6 +2,7 @@
 
 import pytest
 
+import backend.app.channels.telegram.poller as tg_poller
 import backend.app.channels.whatsapp.webhook as wa_webhook
 import backend.app.services.orchestrator as orch
 from backend.app.repositories.deduplication import InMemoryDeduplicationRepository
@@ -24,5 +25,6 @@ def isolate_databases_and_logs(tmp_path, monkeypatch):
     monkeypatch.setattr(orch, "_event_repo", tmp_events)
     monkeypatch.setattr(orch, "_user_pref_repo", tmp_user_pref)
     monkeypatch.setattr(wa_webhook, "_dedup_repo", tmp_dedup)
+    monkeypatch.setattr(tg_poller, "_dedup_repo", tmp_dedup)
 
     yield

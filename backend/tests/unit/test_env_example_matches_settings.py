@@ -25,7 +25,7 @@ def test_env_example_matches_settings():
     assert env_example_path.exists(), ".env.example missing at repo root"
 
     env_vars = parse_env_file(env_example_path)
-    s = Settings()
+    s = Settings(_env_file=None)
     fields = Settings.model_fields
 
     # Check key parity
