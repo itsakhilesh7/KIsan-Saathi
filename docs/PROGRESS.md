@@ -72,6 +72,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
   - `ruff check backend/ scripts/`: All checks passed!
   - `python scripts/scan_secrets.py`: [OK] CLEAN.
 - **Tests:** 69 passed (1 live fixture verified + 68 mocked), 0 failed.
+- **Git commit hash and message:** Commit `9fae561` ("feat(mandi): connect data.gov.in Agmarknet mandi dataset with grounded answering and multi-turn clarification").
 
 ### [2026-11-04 15:20] Telegram Poller Import Fix & Token Log Redaction
 - **Goal and phase:** Phase 2 Telegram pre-live hardening. Fixed runner script logger import and hardened token privacy against HTTP client URL leaks.
