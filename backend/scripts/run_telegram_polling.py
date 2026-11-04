@@ -14,13 +14,13 @@ import sys
 
 from backend.app.channels.telegram.poller import run_polling
 from backend.app.core.config import get_settings
-from backend.app.core.logging import configure_logging
+from backend.app.core.logging import setup_logging
 
 log = logging.getLogger("telegram.runner")
 
 
 async def main() -> None:
-    configure_logging(level="INFO")
+    setup_logging(level=logging.INFO)
     settings = get_settings()
 
     if not settings.TELEGRAM_BOT_TOKEN:

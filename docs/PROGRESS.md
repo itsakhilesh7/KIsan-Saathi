@@ -54,6 +54,20 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
+### [2026-11-04 15:20] Telegram Poller Import Fix & Token Log Redaction
+- **Goal and phase:** Phase 2 Telegram pre-live hardening. Fixed runner script logger import and hardened token privacy against HTTP client URL leaks.
+- **What changed:**
+  - **Runner Import (`backend/scripts/run_telegram_polling.py`):** Fixed import from `configure_logging` to `setup_logging`. Added `configure_logging` alias in `backend/app/core/logging.py`.
+  - **HTTP Logger Quieting (`backend/app/core/logging.py`):** Set `httpx` and `httpcore` loggers to `logging.WARNING` in `setup_logging` to prevent httpx from logging outbound request URLs containing bot tokens at INFO.
+  - **Token Log Redaction Filter (`TelegramTokenRedactionFilter`):** Implemented regex redaction filter and formatter sanitizer scrubbing `/bot[0-9]+:[A-Za-z0-9_-]+` patterns to `/bot[REDACTED]`, attached to root logger and stream handler.
+  - **Unit Tests (`backend/tests/unit/test_telegram_logging_and_runner.py`):** Added 4 test-first unit tests verifying runner module import, logger levels, regex filter behavior, and end-to-end token suppression in emitted log strings.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_telegram_logging_and_runner.py`: 4 passed in 0.36s.
+  - `pytest backend/tests/unit/`: 54 passed, 0 failed in 9.62s.
+  - `ruff check backend/ scripts/`: All checks passed!
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 54 passed (MOCKED), 0 failed.
+
 ### [2026-11-04 10:50] Telegram Channel Implementation (D-002 Fallback Active)
 - **Goal and phase:** Phase 2 WhatsApp Live Loop fallback: Meta test account returned error 131031 ("Business Account locked"). Activated D-002 Telegram fallback channel to unblock live voice/text loop without requiring a public webhook tunnel.
 - **What changed:**

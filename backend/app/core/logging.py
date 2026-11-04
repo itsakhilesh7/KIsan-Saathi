@@ -10,6 +10,7 @@ Strict rules enforced:
 import hashlib
 import json
 import logging
+import re
 import sys
 import uuid
 from contextvars import ContextVar
@@ -20,6 +21,29 @@ _REQUEST_ID_CTX: ContextVar[str] = ContextVar("request_id", default="")
 
 # Sensitive key substrings that must NEVER be logged
 REDACTED_KEYS = {"key", "secret", "token", "auth", "password", "credential"}
+
+# Pattern for Telegram Bot API tokens in URLs (/bot<token>/)
+TELEGRAM_TOKEN_REGEX = re.compile(r"/bot[0-9]+:[A-Za-z0-9_-]+", re.IGNORECASE)
+
+
+class TelegramTokenRedactionFilter(logging.Filter):
+    """Redacts Telegram Bot tokens (/bot<token>/) from log records to prevent secret leakage."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", record.msg)
+        if record.args:
+            if isinstance(record.args, dict):
+                record.args = {
+                    k: (TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", v) if isinstance(v, str) else v)
+                    for k, v in record.args.items()
+                }
+            elif isinstance(record.args, tuple):
+                record.args = tuple(
+                    (TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", a) if isinstance(a, str) else a)
+                    for a in record.args
+                )
+        return True
 
 
 def get_request_id() -> str:
@@ -52,11 +76,14 @@ class StructuredJsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         req_id = _REQUEST_ID_CTX.get() or getattr(record, "request_id", "")
+        raw_msg = record.getMessage()
+        sanitized_msg = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", raw_msg)
+
         log_entry: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": sanitized_msg,
             "request_id": req_id,
         }
 
@@ -74,6 +101,8 @@ class StructuredJsonFormatter(logging.Formatter):
                         log_entry[k] = "[REDACTED]"
                     elif isinstance(v, bytes):
                         log_entry[k] = f"<bytes: {len(v)} bytes>"
+                    elif isinstance(v, str):
+                        log_entry[k] = TELEGRAM_TOKEN_REGEX.sub("/bot[REDACTED]", v)
                     else:
                         log_entry[k] = v
 
@@ -84,12 +113,22 @@ class StructuredJsonFormatter(logging.Formatter):
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Initializes the structured JSON logger."""
+    """Initializes the structured JSON logger with security filters."""
+    redaction_filter = TelegramTokenRedactionFilter()
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(StructuredJsonFormatter())
+    handler.addFilter(redaction_filter)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
-
-    # Avoid duplicate handlers on re-init
     root_logger.handlers = [handler]
+    root_logger.addFilter(redaction_filter)
+
+    # Silence verbose HTTP client loggers that log request URLs with tokens
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+# Alias for backward compatibility
+configure_logging = setup_logging
