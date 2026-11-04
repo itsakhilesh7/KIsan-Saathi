@@ -49,3 +49,4 @@ def test_env_example_matches_settings():
             assert int(env_val) == setting_val, f"Default mismatch for {key}: env='{env_val}', setting={setting_val}"
         else:
             assert env_val == (setting_val or ""), f"Default mismatch for {key}: env='{env_val}', setting='{setting_val}'"
+

@@ -88,7 +88,6 @@ async def test_transcribe_chunks_40s_audio_and_combines_parts():
 
     with patch("backend.app.services.audio_service.get_duration", return_value=40.0), \
          patch("backend.app.services.audio_service.split_wav", return_value=["chunk_1.wav", "chunk_2.wav"]) as mock_split, \
-         patch("os.path.exists", return_value=False), \
          patch("backend.app.integrations.gnani.stt.transcribe_short", new_callable=AsyncMock) as mock_short:
 
         mock_short.side_effect = [
