@@ -56,6 +56,41 @@ PRICE_KEYWORDS = {
     "price", "rate", "mandi", "cost", "market",
 }
 
+# Unicode regex patterns for script detection
+TELUGU_RANGE_REGEX = re.compile(r"[\u0c00-\u0c7f]")
+DEVANAGARI_RANGE_REGEX = re.compile(r"[\u0900-\u097f]")
+LATIN_RANGE_REGEX = re.compile(r"[a-zA-Z]")
+
+HINGLISH_WORDS = {
+    "kya", "hai", "ka", "ki", "ke", "ko", "bhav", "dam", "mandi", "namaste",
+    "aap", "mujhe", "batao", "batayein", "kripya", "nahi", "kaise", "chahiye",
+    "kitna", "kitni", "crop", "fasal", "mein", "se", "aur", "ye", "yeh", "kahan"
+}
+
+
+def detect_text_language(text: str) -> str:
+    """Detects text language based on Unicode script blocks and Hinglish vocabulary markers.
+
+    Returns:
+        'te-IN' for Telugu script,
+        'hi-IN' for Devanagari script,
+        'hi-en' for Latin text containing Hindi markers,
+        'en-IN' for standard English Latin text.
+    """
+    if not text:
+        return "te-IN"
+
+    if TELUGU_RANGE_REGEX.search(text):
+        return "te-IN"
+    if DEVANAGARI_RANGE_REGEX.search(text):
+        return "hi-IN"
+    if LATIN_RANGE_REGEX.search(text):
+        tokens = set(re.split(r"[\s,?!.]+", text.lower()))
+        if tokens & HINGLISH_WORDS:
+            return "hi-en"
+        return "en-IN"
+    return "te-IN"
+
 
 def _match_district(text: str) -> str | None:
     """Matches text against known Telangana districts."""
@@ -75,14 +110,22 @@ def extract_intent(
     """Extracts user intent and slots, resolving against dialogue state if clarification pending."""
     clean_text = text.strip()
 
-    # Check for greeting first
-    if any(k in clean_text.lower() for k in GREETING_KEYWORDS) and not any(p in clean_text for p in PRICE_KEYWORDS):
-        return ParsedIntent(
-            intent=IntentType.GREETING_OR_HELP,
-            language=language,
-            slots=IntentSlots(),
-            clarification_needed=False,
-        )
+    # Check for greeting first: ONLY when message is short (<= 4 words) and has no other query/content
+    words = [w for w in re.split(r"[\s,?!.]+", clean_text) if w]
+    has_greeting_kw = any(k in clean_text.lower() for k in GREETING_KEYWORDS)
+    has_price_kw = any(p in clean_text for p in PRICE_KEYWORDS)
+
+    if has_greeting_kw and len(words) <= 4 and not has_price_kw:
+        # Check if there is a commodity or district mention
+        has_commodity = any(resolve_commodity(w) is not None for w in words)
+        has_district = _match_district(clean_text) is not None
+        if not has_commodity and not has_district:
+            return ParsedIntent(
+                intent=IntentType.GREETING_OR_HELP,
+                language=language,
+                slots=IntentSlots(),
+                clarification_needed=False,
+            )
 
     # Check active dialogue state for this user (10-minute TTL)
     previous_state: dict[str, Any] | None = None

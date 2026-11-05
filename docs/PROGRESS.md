@@ -9,7 +9,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P0 (Access & Audit):** Done (offline parts complete; live API keys pending from developer).
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** In Progress. WhatsApp live steps paused due to Meta test account blocker (error 131031: "Business Account locked" on every send). Activated Telegram fallback channel (D-002) for immediate live pipeline development and testing without tunnel requirement.
-- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector & First Grounded Answer) Done (69 unit tests passing). Weather and KCC pending Phase 3B/3C.
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector & Grounded Answering) & Phase 3A.1 (Fix Pass & Multi-Market Hardening) Done (79 unit tests passing). Weather and KCC pending Phase 3B/3C.
 - **P4 (Crop Q&A + Safety):** Not started.
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
 - **P6 (Evaluation + Deploy):** Not started.
@@ -53,6 +53,23 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ---
 
 ## LOG
+
+### [2026-11-05 10:00] Phase 3A.1: Fix Pass, Multi-Market Grounding & Guardrail Hardening
+- **Goal and phase:** Phase 3A.1. Resolved issues surfaced in live testing: greeting length/content guard, unsupported intent protection, script-based language detection, first-turn disclaimer tracking, multi-market answer grouping, natural date formatting, and price unit configuration.
+- **What changed:**
+  - **Greeting Guard (`backend/app/services/intent_service.py`):** Messages are classified as greeting ONLY when $\le 4$ words and free of query content (no commodity mentions, no district mentions). Advice queries starting with a greeting (e.g. `"నమస్కారం, నేను ఇక్కడ పత్తి పండిస్తున్నాను, మీరు నాకు ఏమైనా సలహా ఇవ్వగలరా?"`) are properly routed to `unsupported_or_unclear`.
+  - **Unsupported Intent Blocking (`backend/app/services/orchestrator.py` & `answer_composer.py`):** Unsupported intents never echo user text and never invoke free-form LLM unless dev flag `ECHO_UNSUPPORTED=true` is set. Added `ECHO_UNSUPPORTED: bool = False` to `Settings`, `.env.example`, and verified via parity test. Fixed guidance messages returned across `te-IN`, `hi-IN`, `en-IN`, and `hi-en` indicating mandi prices are supported and weather/crop advice are coming.
+  - **Script-Based Language Detection (`backend/app/services/intent_service.py`):** Script analyzer `detect_text_language(text)` inspects Unicode ranges (`\u0c00-\u0c7f` for Telugu, `\u0900-\u097f` for Hindi Devanagari, Latin script with Hindi vocabulary tokens like `kya`, `bhav`, `hai`, `mein` for `hi-en`, and `en-IN` for English). Persists user's language preference on Turn 1.
+  - **First Turn Flag Persistence (`backend/app/services/orchestrator.py`):** User is marked seen on ANY message (text or voice) in `SQLiteUserPreferencesRepository`. AI assistant identity disclaimer (`"కిసాన్ సాథీ AI సహాయకుడిని"`) renders strictly on the very first turn. Subsequent greetings are concise without repeating the intro.
+  - **Multi-Market Grounded Answering (`backend/app/services/answer_composer.py`):** `compose_mandi_answer()` groups records by market, citing up to 2 distinct markets sorted by most recent arrival date with verified modal prices. When a requested district has zero records, acknowledges the missing district and offers state-level alternatives.
+  - **Natural Dates & Configurable Units (`backend/app/services/answer_composer.py`):** Formats arrival dates naturally per language (`4 నవంబర్`, `4 नवंबर`, `4 November`), retaining ISO strings in `Evidence`. Added `MANDI_PRICE_UNIT: str = ""` to `Settings` and `.env.example` (omitted if empty, localized as `క్వింటాలుకు`, `प्रति क्विंटल`, `per quintal` when set).
+  - **Raw Language Code Logging (`backend/app/repositories/events.py`):** Added `raw_detected_language` column to SQLite `events` table (with automatic migration) and JSONL event log to capture raw Prisma STT language tags.
+  - **Unit Test Suite (`backend/tests/unit/test_phase3a1_hardening.py`):** Added comprehensive test coverage for all Phase 3A.1 changes.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/`: 79 passed, 0 failed in 13.62s.
+  - `ruff check backend/ scripts/`: All checks passed.
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 79 passed (1 live fixture verified + 78 mocked), 0 failed.
 
 ### [2026-11-04 16:30] Phase 3A: Mandi Connector & First Grounded Answer Complete
 - **Goal and phase:** Phase 3A. Connected data.gov.in Agmarknet daily mandi prices dataset, built commodity resolver, intent & slot extraction, multi-turn clarification with 10-minute TTL dialogue state, grounded answer composer, and integrated end-to-end with orchestrator.

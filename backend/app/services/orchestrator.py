@@ -25,8 +25,8 @@ from ..repositories.events import EventRepository
 from ..repositories.user_preferences import SQLiteUserPreferencesRepository
 from ..schemas.intent import IntentType
 from . import audio_service
-from .answer_composer import compose_clarification_reply, compose_mandi_answer
-from .intent_service import extract_intent
+from .answer_composer import UNSUPPORTED_INTENT_MESSAGES, compose_clarification_reply, compose_mandi_answer
+from .intent_service import detect_text_language, extract_intent
 
 log = logging.getLogger("orchestrator")
 
@@ -230,20 +230,40 @@ async def handle_voice_message(
                         state=parsed.slots.state or "Telangana",
                         settings=settings,
                     )
-                    reply_text = compose_mandi_answer(evidence, language=detected_lang, is_first_turn=is_first_turn)
+                    reply_text = compose_mandi_answer(
+                        evidence,
+                        language=detected_lang,
+                        is_first_turn=is_first_turn,
+                        requested_district=parsed.slots.district,
+                        requested_commodity=parsed.slots.commodity,
+                        requested_state=parsed.slots.state or "Telangana",
+                        unit=settings.MANDI_PRICE_UNIT,
+                    )
                     disclosed_model = "grounded/agmarknet_mandi"
             elif parsed.intent == IntentType.GREETING_OR_HELP:
-                greetings = {
-                    "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరలు లేదా వ్యవసాయ సమాచారం గురించి అడగవచ్చు.",
-                    "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव या खेती से जुड़ी जानकारी पूछ सकते हैं।",
-                    "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices or farming queries.",
-                    "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices ya farming queries pooch sakte hain.",
-                }
+                if is_first_turn:
+                    greetings = {
+                        "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరల సమాచారం గురించి అడగవచ్చు.",
+                        "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव की जानकारी पूछ सकते हैं।",
+                        "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices.",
+                        "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices pooch sakte hain.",
+                    }
+                else:
+                    greetings = {
+                        "te-IN": "నమస్కారం! మీరు ఏ పంట మండి ధర తెలుసుకోవాలనుకుంటున్నారు?",
+                        "hi-IN": "नमस्ते! आप किस फसल का मंडी भाव जानना चाहते हैं?",
+                        "en-IN": "Hello! Which crop's mandi price would you like to know?",
+                        "hi-en": "Namaste! Aap kis crop ka mandi price jaanna chahte hain?",
+                    }
                 reply_text = greetings.get(detected_lang, greetings["te-IN"])
                 disclosed_model = "rule_based/greeting"
             else:
-                llm_adapter = OpenAICompatibleLLM(settings=settings)
-                reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
+                if settings.ECHO_UNSUPPORTED:
+                    llm_adapter = OpenAICompatibleLLM(settings=settings)
+                    reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
+                else:
+                    reply_text = UNSUPPORTED_INTENT_MESSAGES.get(detected_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
+                    disclosed_model = "rule_based/unsupported_intent"
 
             timings["llm"] = round(time.perf_counter() - s, 2)
 
@@ -276,6 +296,7 @@ async def handle_voice_message(
             "user_hash": phone_hash,
             "channel": channel.channel_name,
             "detected_language": detected_lang,
+            "raw_detected_language": raw_detected_lang,
             "model_name": disclosed_model,
             "timings": timings,
             "status": "ok",
@@ -322,8 +343,11 @@ async def handle_text_message(
         return
 
     try:
-        user_lang = _resolve_user_language(phone_hash, None, settings)
         is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
+        detected_script_lang = detect_text_language(text)
+        user_lang = detected_script_lang or _resolve_user_language(phone_hash, None, settings)
+        get_user_pref_repo().set_language(phone_hash, user_lang)
+
         parsed = extract_intent(
             text,
             language=user_lang,
@@ -342,20 +366,40 @@ async def handle_text_message(
                     state=parsed.slots.state or "Telangana",
                     settings=settings,
                 )
-                reply = compose_mandi_answer(evidence, language=user_lang, is_first_turn=is_first_turn)
+                reply = compose_mandi_answer(
+                    evidence,
+                    language=user_lang,
+                    is_first_turn=is_first_turn,
+                    requested_district=parsed.slots.district,
+                    requested_commodity=parsed.slots.commodity,
+                    requested_state=parsed.slots.state or "Telangana",
+                    unit=settings.MANDI_PRICE_UNIT,
+                )
                 disclosed_model = "grounded/agmarknet_mandi"
         elif parsed.intent == IntentType.GREETING_OR_HELP:
-            greetings = {
-                "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరలు లేదా వ్యవసాయ సమాచారం గురించి అడగవచ్చు.",
-                "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव या खेती से जुड़ी जानकारी पूछ सकते हैं।",
-                "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices or farming queries.",
-                "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices ya farming queries pooch sakte hain.",
-            }
+            if is_first_turn:
+                greetings = {
+                    "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరల సమాచారం గురించి అడగవచ్చు.",
+                    "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव की जानकारी पूछ सकते हैं।",
+                    "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices.",
+                    "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices pooch sakte hain.",
+                }
+            else:
+                greetings = {
+                    "te-IN": "నమస్కారం! మీరు ఏ పంట మండి ధర తెలుసుకోవాలనుకుంటున్నారు?",
+                    "hi-IN": "नमस्ते! आप किस फसल का मंडी भाव जानना चाहते हैं?",
+                    "en-IN": "Hello! Which crop's mandi price would you like to know?",
+                    "hi-en": "Namaste! Aap kis crop ka mandi price jaanna chahte hain?",
+                }
             reply = greetings.get(user_lang, greetings["te-IN"])
             disclosed_model = "rule_based/greeting"
         else:
-            llm_adapter = OpenAICompatibleLLM(settings=settings)
-            reply, disclosed_model = await llm_adapter.answer(text, lang=user_lang)
+            if settings.ECHO_UNSUPPORTED:
+                llm_adapter = OpenAICompatibleLLM(settings=settings)
+                reply, disclosed_model = await llm_adapter.answer(text, lang=user_lang)
+            else:
+                reply = UNSUPPORTED_INTENT_MESSAGES.get(user_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
+                disclosed_model = "rule_based/unsupported_intent"
 
         await channel.send_text(sender_phone, reply)
         await get_event_repo().log_event({

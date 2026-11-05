@@ -207,6 +207,7 @@ async def test_telegram_voice_flow_end_to_end_mocked(tmp_path):
         AUDIO_MAX_SECONDS=60,
         PHONE_HASH_SALT="salt_tele_123",
         SEND_TEXT_COPY=True,
+        ECHO_UNSUPPORTED=True,
     )
 
     mock_client = AsyncMock()
@@ -251,3 +252,53 @@ async def test_telegram_voice_flow_end_to_end_mocked(tmp_path):
         assert mock_client.send_text.called
         assert mock_client.send_text.call_args[0][0] == "987654321"
         assert "వేపనూనె" in mock_client.send_text.call_args[0][1]
+
+
+@pytest.mark.asyncio
+async def test_telegram_voice_flow_unsupported_intent_blocked_default(tmp_path):
+    """MOCKED: Unsupported intent returns fixed guidance without LLM when ECHO_UNSUPPORTED=False."""
+    settings = Settings(
+        TELEGRAM_BOT_TOKEN="mock_bot_token_12345",
+        AUDIO_MAX_SECONDS=60,
+        PHONE_HASH_SALT="salt_tele_123",
+        SEND_TEXT_COPY=True,
+        ECHO_UNSUPPORTED=False,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.channel_name = "telegram"
+    mock_client.download_media.return_value = b"DUMMY_OGG_BYTES"
+    mock_client.send_audio_bytes.return_value = {"ok": True}
+    mock_client.send_text.return_value = {"ok": True}
+
+    msg = {
+        "from": "987654321",
+        "media_id": "tg_voice_file_abc123",
+        "mime_type": "audio/ogg",
+    }
+
+    def _mock_wav_to_ogg(src, dst):
+        with open(dst, "wb") as f:
+            f.write(b"MOCK_OGG_CONTENT")
+
+    with patch("backend.app.services.audio_service.to_wav16k"), \
+         patch("backend.app.services.audio_service.get_duration", return_value=12.0), \
+         patch("backend.app.integrations.gnani.stt.transcribe", new_callable=AsyncMock) as mock_stt, \
+         patch("backend.app.integrations.llm.openai_compatible.OpenAICompatibleLLM.answer", new_callable=AsyncMock) as mock_llm, \
+         patch("backend.app.integrations.gnani.tts.synthesize", new_callable=AsyncMock) as mock_tts, \
+         patch("backend.app.services.audio_service.wav_to_ogg_opus", side_effect=_mock_wav_to_ogg):
+
+        mock_stt.return_value = {
+            "transcript": "వరి తెగులు నివారణ",
+            "detected_language_code": "te-IN",
+            "raw_language_code": "te-IN",
+            "chunks": 1,
+        }
+        mock_tts.return_value = b"DUMMY_TTS_WAV"
+
+        await handle_voice_message(msg, settings, client=mock_client)
+
+        assert not mock_llm.called
+        assert mock_client.send_text.called
+        # Contains the fixed Telugu guidance phrase
+        assert "మండి ధరల సమాచారం" in mock_client.send_text.call_args[0][1]

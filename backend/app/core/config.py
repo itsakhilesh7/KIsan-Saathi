@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     SEND_TEXT_COPY: bool = True
     # By default False per privacy rules (rules.md). Only set to True for offline consented eval debugging.
     STORE_RAW_TRANSCRIPTS: bool = False
+    ECHO_UNSUPPORTED: bool = False
 
     # ---- Pilot ----
     PILOT_CONFIG_PATH: str = "config/pilot.yaml"
@@ -82,6 +83,7 @@ class Settings(BaseSettings):
     DATA_GOV_API_KEY: str = ""
     DATA_GOV_BASE_URL: str = "https://api.data.gov.in/resource"
     MANDI_RESOURCE_ID: str = "9ef84268-d588-465a-a308-a864a43d0070"
+    MANDI_PRICE_UNIT: str = ""
     KCC_RESOURCE_IDS: str = ""
 
     # ---- Open-Meteo ----

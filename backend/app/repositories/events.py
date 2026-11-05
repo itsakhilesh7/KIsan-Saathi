@@ -38,6 +38,7 @@ class EventRepository:
                     user_hash TEXT NOT NULL,
                     channel TEXT NOT NULL,
                     detected_language TEXT,
+                    raw_detected_language TEXT,
                     timings_json TEXT,
                     model_name TEXT,
                     status TEXT NOT NULL,
@@ -47,7 +48,21 @@ class EventRepository:
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE events ADD COLUMN raw_detected_language TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
+
+    def get_recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Returns the most recent events from SQLite for inspection and testing."""
+        with self._lock, sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM events ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def _sync_log_event(self, event_data: dict[str, Any]) -> None:
         """Appends record to SQLite and events.jsonl synchronously."""
@@ -55,6 +70,7 @@ class EventRepository:
         user_hash = event_data.get("user_hash", "")
         channel = event_data.get("channel", "whatsapp")
         lang = event_data.get("detected_language")
+        raw_lang = event_data.get("raw_detected_language")
         timings = json.dumps(event_data.get("timings", {}))
         model = event_data.get("model_name")
         status = event_data.get("status", "ok")
@@ -69,10 +85,10 @@ class EventRepository:
                         """
                         INSERT INTO events (
                             request_id, user_hash, channel, detected_language,
-                            timings_json, model_name, status, transcript, reply
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            raw_detected_language, timings_json, model_name, status, transcript, reply
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (req_id, user_hash, channel, lang, timings, model, status, transcript, reply),
+                        (req_id, user_hash, channel, lang, raw_lang, timings, model, status, transcript, reply),
                     )
                     conn.commit()
             except Exception as e:
