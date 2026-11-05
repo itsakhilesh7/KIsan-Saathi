@@ -32,6 +32,36 @@ def load_commodity_aliases() -> dict[str, Any]:
     return data.get("aliases", {})
 
 
+AMBIGUOUS_CHILLI_KEYWORDS = [
+    "మిర్చి", "మిరప", "మిరపకాయ", "మిరప పంట",
+    "mirchi", "chilli", "chillies", "chilly",
+    "मिर्च", "मिर्ची",
+]
+
+GREEN_CHILLI_MARKERS = [
+    "పచ్చి", "పచ్చిమిర్చి", "green", "hari", "हरी",
+]
+
+DRY_CHILLI_MARKERS = [
+    "ఎండు", "ఎండుమిర్చి", "ఎర్ర", "dry", "red", "sukhi", "सूखी", "लाल", "endu", "erra",
+]
+
+
+def is_ambiguous_chilli(text: str) -> bool:
+    """Returns True if user mentions chilli generically without specifying green or dry."""
+    if not text:
+        return False
+    lower = text.lower()
+
+    # If already explicitly matches green or dry chilli, it is NOT ambiguous
+    has_green = any(m in lower for m in GREEN_CHILLI_MARKERS)
+    has_dry = any(m in lower for m in DRY_CHILLI_MARKERS)
+    if has_green or has_dry:
+        return False
+
+    return any(k in lower for k in AMBIGUOUS_CHILLI_KEYWORDS)
+
+
 def resolve_commodity(word: str) -> str | None:
     """Matches a spoken or typed commodity word (in Telugu, Hindi, or English)
 

@@ -38,3 +38,4 @@ class ParsedIntent(BaseModel):
     slots: IntentSlots = Field(default_factory=IntentSlots)
     missing_required_slots: list[str] = Field(default_factory=list)
     clarification_needed: bool = False
+    clarification_type: str | None = None

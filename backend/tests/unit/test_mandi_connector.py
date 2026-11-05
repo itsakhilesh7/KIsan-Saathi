@@ -44,7 +44,9 @@ def test_commodity_resolver_live_crops():
     assert resolve_commodity("వరి") == "Paddy(Common)"
     assert resolve_commodity("కందులు") == "Red gram/Arhar/Tur(whole)"
     assert resolve_commodity("టమాట") == "Tomato"
-    assert resolve_commodity("మిర్చి") == "Green Chilli"
+    assert resolve_commodity("పచ్చిమిర్చి") == "Green Chilli"
+    assert resolve_commodity("ఎండుమిర్చి") == "Dry Chillies"
+    assert resolve_commodity("మిర్చి") is None  # Ambiguous; triggers clarification in Phase 3B
     assert resolve_commodity("బెండకాయ") == "Ladies Finger"
     assert resolve_commodity("వంకాయ") == "Brinjal"
 
@@ -57,7 +59,9 @@ def test_commodity_resolver_live_crops():
     # English / Hinglish
     assert resolve_commodity("cotton") == "Cotton"
     assert resolve_commodity("paddy") == "Paddy(Common)"
-    assert resolve_commodity("mirchi") == "Green Chilli"
+    assert resolve_commodity("green chilli") == "Green Chilli"
+    assert resolve_commodity("dry chilli") == "Dry Chillies"
+    assert resolve_commodity("mirchi") is None  # Ambiguous; triggers clarification in Phase 3B
 
     # Unknown / Unconfirmed commodity must return None (LLM must not invent names)
     assert resolve_commodity("xyz_unknown_crop") is None

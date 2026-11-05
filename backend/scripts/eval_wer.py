@@ -28,6 +28,20 @@ from ..app.services import audio_service
 # Indic + English punctuation normalization pattern (including Devanagari danda)
 PUNCT_REGEX = re.compile(r"[\.,\?!;:\"'—\-_।॥\(\)\[\]\{\}]")
 
+LANG_MAP = {
+    "telugu": "te-IN",
+    "te-in": "te-IN",
+    "te": "te-IN",
+    "hindi": "hi-IN",
+    "hi-in": "hi-IN",
+    "hi": "hi-IN",
+    "hinglish": "hi-IN",
+    "hi-en": "hi-IN",
+    "english": "en-IN",
+    "en-in": "en-IN",
+    "en": "en-IN",
+}
+
 
 def normalize_text(text: str) -> str:
     """Normalizes speech text: lowercase, remove punctuation & dandas, collapse whitespace."""
@@ -36,6 +50,36 @@ def normalize_text(text: str) -> str:
     t = text.lower()
     t = PUNCT_REGEX.sub(" ", t)
     return " ".join(t.split())
+
+
+def _find_clip_file(clips_path: Path, raw_file: str, clip_id: str) -> Path | None:
+    """Finds audio clip file by filename, clip_id, or known ID mapping conventions."""
+    all_files = list(clips_path.iterdir()) if clips_path.exists() else []
+
+    # 1. Direct raw_file lookup
+    if raw_file:
+        for f in all_files:
+            if f.name.lower() == raw_file.lower() or f.stem.lower() == raw_file.lower():
+                return f
+
+    # 2. Direct clip_id lookup
+    if clip_id:
+        for f in all_files:
+            if f.name.lower() == clip_id.lower() or f.stem.lower() == clip_id.lower():
+                return f
+
+        # 3. Known ID patterns: TEL-01 -> Telugu_1, HIN-02 -> Hindi_2, HING-01 -> Hinglish_1
+        m = re.match(r"(?i)^(TEL|HIN|HING)-0?(\d+)$", clip_id)
+        if m:
+            prefix_map = {"tel": "telugu", "hin": "hindi", "hing": "hinglish"}
+            lang_prefix = prefix_map.get(m.group(1).lower(), m.group(1).lower())
+            num = m.group(2)
+            target_pattern = f"{lang_prefix}_{num}".lower()
+            for f in all_files:
+                if f.name.lower().startswith(target_pattern):
+                    return f
+
+    return None
 
 
 async def evaluate_manifest(
@@ -55,7 +99,7 @@ async def evaluate_manifest(
         print(f"ERROR: Transcripts manifest not found at {csv_path}")
         sys.exit(1)
 
-    with open(csv_file, "r", encoding="utf-8") as f:
+    with open(csv_file, "r", encoding="utf-8-sig") as f:
         reader = list(csv.DictReader(f))
 
     if not reader:
@@ -70,29 +114,15 @@ async def evaluate_manifest(
     valid_rows: list[tuple[dict[str, str], Path]] = []
     for row in reader:
         raw_file = row.get("file", "").strip()
-        if not raw_file:
-            continue
-
-        # Check candidate locations:
-        # 1. clips_dir / raw_file
-        # 2. clips_dir / basename(raw_file) (accepts plain filenames)
-        # 3. relative to csv_path
-        candidates = [
-            clips_path / raw_file,
-            clips_path / Path(raw_file).name,
-            csv_file.parent / raw_file,
-        ]
-        target_file: Path | None = None
-        for c in candidates:
-            if c.exists() and c.is_file():
-                target_file = c
-                break
+        clip_id = row.get("clip_id", "").strip()
+        target_file = _find_clip_file(clips_path, raw_file, clip_id)
 
         if target_file:
             found_audio_count += 1
             valid_rows.append((row, target_file))
         else:
-            print(f"Warning: Audio file not found for row file='{raw_file}' (checked in '{clips_dir}')")
+            identifier = raw_file or clip_id
+            print(f"Warning: Audio file not found for row '{identifier}' (checked in '{clips_dir}')")
 
     if found_audio_count == 0:
         print(f"ERROR: Zero audio files found in clips directory '{clips_dir}' for manifest '{csv_path}'.")
@@ -102,16 +132,20 @@ async def evaluate_manifest(
     print(f"Found {found_audio_count} audio files matching manifest entries. Beginning evaluation...")
 
     for row, audio_file in valid_rows:
-        ref_lang = row.get("language", "").strip()
-        reference = row.get("reference", "").strip()
+        ref_lang_raw = row.get("language", "").strip()
+        ref_lang_code = LANG_MAP.get(ref_lang_raw.lower(), ref_lang_raw)
+        reference = row.get("reference", "").strip() or row.get("reference_transcript", "").strip()
         ref_norm = normalize_text(reference)
+        cid = row.get("clip_id") or audio_file.name
+
+        print(f"[*] Processing {cid} ({audio_file.name}, {ref_lang_raw})...")
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             wav_16k = os.path.join(tmp_dir, "eval.wav")
             await asyncio.to_thread(audio_service.to_wav16k, str(audio_file), wav_16k)
 
             for mode in eval_modes:
-                lang_arg = "indic-auto" if mode == "indic-auto" else ref_lang
+                lang_arg = "indic-auto" if mode == "indic-auto" else ref_lang_code
                 stt_res = await transcribe(wav_16k, language_code=lang_arg, settings=settings)
                 hyp = stt_res.get("transcript", "")
                 hyp_norm = normalize_text(hyp)
@@ -121,7 +155,7 @@ async def evaluate_manifest(
 
                 record = {
                     "file": audio_file.name,
-                    "target_language": ref_lang,
+                    "target_language": ref_lang_raw,
                     "mode": mode,
                     "detected_language": stt_res.get("detected_language_code"),
                     "reference": reference,
@@ -130,6 +164,7 @@ async def evaluate_manifest(
                     "cer": round(cer_score, 4),
                 }
                 results.append(record)
+                print(f"    Mode: {mode:<10} | WER: {wer_score:6.2%} | CER: {cer_score:6.2%} | Detected: {stt_res.get('detected_language_code')}")
 
     # Save detailed CSV
     os.makedirs(os.path.dirname(output_csv) or ".", exist_ok=True)

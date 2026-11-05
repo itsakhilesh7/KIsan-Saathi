@@ -10,6 +10,7 @@ Enforces strict factual constraints:
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from ..schemas.evidence import Evidence
@@ -111,6 +112,14 @@ CLARIFICATION_MESSAGES = {
     "hi-en": "Aap kis crop ka mandi price jaanna chahte hain? Please crop ka naam batayein (jaise: Cotton, Dhan, Arhar, Mirchi).",
 }
 
+# Chilli disambiguation questions (Green Chilli vs Dry Red Chillies)
+CHILLI_CLARIFICATION_MESSAGES = {
+    "te-IN": "మీరు పచ్చి మిర్చి ధర తెలుసుకోవాలనుకుంటున్నారా లేదా ఎండు మిర్చి ధర తెలుసుకోవాలనుకుంటున్నారా?",
+    "hi-IN": "आप हरी मिर्च का भाव जानना चाहते हैं या सूखी लाल मिर्च का?",
+    "en-IN": "Would you like to know the price for Green Chilli or Dry Red Chilli?",
+    "hi-en": "Aap Green Chilli ka price jaanna chahte hain ya Dry Red Chilli ka?",
+}
+
 
 def _is_stale(arrival_iso: str | None) -> bool:
     """Returns True if arrival date is older than 3 days compared to current UTC date."""
@@ -125,10 +134,17 @@ def _is_stale(arrival_iso: str | None) -> bool:
         return False
 
 
-def compose_clarification_reply(language: str = "te-IN", is_first_turn: bool = False) -> str:
-    """Composes a short clarification question requesting missing commodity information."""
+def compose_clarification_reply(
+    language: str = "te-IN",
+    is_first_turn: bool = False,
+    clarification_type: str | None = None,
+) -> str:
+    """Composes a short clarification question for missing commodity or ambiguous chilli type."""
     intro = AI_DISCLAIMERS.get(language, AI_DISCLAIMERS["te-IN"]) if is_first_turn else ""
-    msg = CLARIFICATION_MESSAGES.get(language, CLARIFICATION_MESSAGES["te-IN"])
+    if clarification_type == "chilli_type":
+        msg = CHILLI_CLARIFICATION_MESSAGES.get(language, CHILLI_CLARIFICATION_MESSAGES["te-IN"])
+    else:
+        msg = CLARIFICATION_MESSAGES.get(language, CLARIFICATION_MESSAGES["te-IN"])
     return f"{intro}{msg}".strip()
 
 
@@ -273,5 +289,76 @@ def compose_mandi_answer(
         if mp is not None:
             mp_val = int(mp) if mp == int(mp) else mp
             assert str(mp_val) in reply, f"Verification failed: modal price {mp_val} missing from composed reply"
+
+    return reply
+
+
+def compose_weather_answer(
+    evidence: Evidence,
+    language: str = "te-IN",
+    is_first_turn: bool = False,
+    requested_district: str | None = None,
+) -> str:
+    """Composes a grounded, verified weather response of at most 3 sentences.
+
+    Enforces uncertainty wording and strictly never claims that spraying, irrigation,
+    or harvesting is 'safe'.
+    """
+    intro = AI_DISCLAIMERS.get(language, AI_DISCLAIMERS["te-IN"]) if is_first_turn else ""
+    data = evidence.data or {}
+    dates = data.get("dates") or []
+    temp_max = data.get("temp_max") or []
+    temp_min = data.get("temp_min") or []
+    precip_prob = data.get("precipitation_probability") or []
+
+    if not dates or not temp_max or not temp_min:
+        if language == "te-IN":
+            return f"{intro}క్షమించండి, ప్రస్తుతం వాతావరణ సమాచారం అందుబాటులో లేదు. దయచేసి కాసేపటి తర్వాత మళ్ళీ ప్రయత్నించండి.".strip()
+        elif language == "hi-IN":
+            return f"{intro}माफ़ कीजिए, फ़िलहाल मौसम की जानकारी उपलब्ध नहीं है। कृपया थोड़ी देर बाद पुनः प्रयास करें।".strip()
+        elif language == "hi-en":
+            return f"{intro}Sorry, abhi weather information available nahi hai. Please thodi der baad try karein.".strip()
+        else:
+            return f"{intro}Sorry, weather information is currently unavailable. Please try again later.".strip()
+
+    raw_dist = requested_district or data.get("district") or "మీ ప్రాంతం"
+    # Prompt injection mitigation: strip newlines and control directives from user-supplied location names
+    dist = re.sub(r"[\r\n].*", "", str(raw_dist)).strip()
+    dist = re.sub(r"(?i)\b(system|ignore|instructions|prompt|safe|100%)\b", "", dist).strip() or "మీ ప్రాంతం"
+    d0_date = format_natural_date(dates[0], language=language)
+    max0 = int(round(temp_max[0]))
+    min0 = int(round(temp_min[0]))
+    rain0 = int(round(precip_prob[0])) if precip_prob else 0
+
+    rain_next = int(round(max(precip_prob[1:3]))) if len(precip_prob) > 1 else rain0
+
+    if language == "te-IN":
+        s1 = f"వాతావరణ సూచన ప్రకారం, {dist}లో {d0_date}న గరిష్ట ఉష్ణోగ్రత {max0}°C, కనిష్ట ఉష్ణోగ్రత {min0}°C గా నమోదయ్యే అవకాశం ఉంది మరియు వర్షం పడే అవకాశం {rain0}% గా ఉంది."
+        s2 = f"రాబోయే రెండు రోజుల్లో వర్షం పడే అవకాశం దాదాపు {rain_next}% వరకు ఉండవచ్చు."
+        s3 = "వాతావరణ పరిస్థితులను బట్టి మీ వ్యవసాయ పనులను తగిన జాగ్రత్తలతో ప్లాన్ చేసుకోండి."
+    elif language == "hi-IN":
+        s1 = f"मौसम पूर्वानुमान के अनुसार, {dist} में {d0_date} को अधिकतम तापमान {max0}°C और न्यूनतम तापमान {min0}°C रहने का अनुमान है, तथा वर्षा की संभावना {rain0}% है।"
+        s2 = f"अगले दो दिनों में बारिश की संभावना लगभग {rain_next}% तक रह सकती है।"
+        s3 = "मौसम की स्थिति को देखते हुए अपने कृषि कार्यों की उचित योजना बनाएं।"
+    elif language == "hi-en":
+        s1 = f"Weather forecast ke mutabiq, {dist} me {d0_date} ko maximum temperature {max0}°C aur minimum {min0}°C rehne ka anuman hai, aur rain ke {rain0}% chances hain."
+        s2 = f"Agle do dino me rain ke chances lagbhag {rain_next}% tak ho sakte hain."
+        s3 = "Mausam ki sthiti ke hisaab se apne kheti ke kamo ko plan karein."
+    else:
+        s1 = f"According to the weather forecast, {dist} on {d0_date} is expected to have a maximum temperature of {max0}°C, a minimum of {min0}°C, and a {rain0}% chance of rain."
+        s2 = f"Over the next two days, the chance of rain may reach approximately {rain_next}%."
+        s3 = "Please plan your field operations carefully based on local weather conditions."
+
+    reply = f"{intro}{s1} {s2} {s3}".strip()
+
+    # Safety checks: never claim that any operation is "safe"
+    assert "safe" not in reply.lower() or "safely" in reply.lower(), "Safety violation: unconditional safety asserted"
+    assert "సురక్షితమైన" not in reply, "Safety violation: safe spraying/irrigation asserted in Telugu"
+    assert "सुरक्षित" not in reply, "Safety violation: safe spraying/irrigation asserted in Hindi"
+
+    # Strictly verify that cited numbers appear in reply
+    assert str(max0) in reply, f"Verification failed: max temp {max0} missing from weather reply"
+    assert str(min0) in reply, f"Verification failed: min temp {min0} missing from weather reply"
+    assert str(rain0) in reply, f"Verification failed: rain probability {rain0} missing from weather reply"
 
     return reply

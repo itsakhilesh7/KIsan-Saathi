@@ -39,9 +39,14 @@ aliases:
     hi: ["टमाटर"]
 
   Green Chilli:
-    en: ["green chilli", "chilli", "mirchi"]
-    te: ["పచ్చిమిర్చి", "మిర్చి", "మిరపకాయ", "పచ్చి మిరప"]
-    hi: ["हरी मिर्च", "मिर्च", "मिर्ची"]
+    en: ["green chilli", "green chillies", "green chilly", "pachi mirchi", "hari mirch"]
+    te: ["పచ్చిమిర్చి", "పచ్చి మిర్చి", "పచ్చి మిరపకాయ", "పచ్చి మిరప"]
+    hi: ["हरी मिर्च", "हरी मिर्ची"]
+
+  Dry Chillies:
+    en: ["dry chilli", "dry chillies", "dry chilly", "red chilli", "red chillies", "sukhi mirch", "sukhi lal mirch", "lal mirch", "endu mirchi", "erra mirchi"]
+    te: ["ఎండుమిర్చి", "ఎండు మిర్చి", "ఎండు మిరపకాయ", "ఎర్ర మిర్చి", "ఎండు మిరప"]
+    hi: ["सूखी मिर्च", "लाल मिर्च", "सूखी लाल मिर्च"]
 
   Brinjal:
     en: ["brinjal", "eggplant", "aubergine", "baingan"]

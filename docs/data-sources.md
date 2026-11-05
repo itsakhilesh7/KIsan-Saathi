@@ -14,8 +14,14 @@ Allowlist for factual data. Status values: `discovered`, `schema_verified`, `liv
 - **Status:** `live_tested` (Verified live with active key on 2026-11-04; sanitized fixture in `backend/tests/fixtures/mandi_telangana_sample.json`).
 
 ## 2. Weather
-- **Source:** Open-Meteo Forecast API, `https://api.open-meteo.com/v1/forecast` (free, no key; check terms for the demo). Request only needed variables; set coordinates and timezone (Asia/Kolkata) from `config/pilot.yaml`. Store retrieved-at and horizon. Forecast is not observation. Status: `discovered`.
-- Optional supplement: IMD advisories if a stable published endpoint/bulletin exists. No scraping as a hidden dependency.
+- **Source:** Open-Meteo Forecast API (`https://api.open-meteo.com/v1/forecast`) and Open-Meteo Geocoding API (`https://geocoding-api.open-meteo.com/v1/search`). Host allowlisted; free non-commercial/demo use without API keys.
+- **API Details & Verified Facts (2026-11-05 live call):**
+  - **Geocoding:** `https://geocoding-api.open-meteo.com/v1/search?name=<district>&count=5&language=en&country_code=IN`. Verified live for Warangal (`18.0, 79.5833`, admin1=`Telangana`). Caches results in memory; falls back to `pilot.yaml` coordinates if geocoding fails.
+  - **Forecast:** `https://api.open-meteo.com/v1/forecast?latitude=<lat>&longitude=<lon>&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Asia/Kolkata&forecast_days=3`.
+  - **Daily Fields:** `time` (ISO dates), `temperature_2m_max` (°C), `temperature_2m_min` (°C), `precipitation_sum` (mm), `precipitation_probability_max` (%).
+  - Sanitized fixture saved in `backend/tests/fixtures/weather_sample.json`.
+- **Rules & Guardrails:** At most 3 sentences in user's language. Uncertainty wording required ("forecast indicates", "chance of rain"). Safety guard: **NEVER assert that spraying, irrigation, or harvesting is "safe"** (Rule 1.1).
+- **Status:** `live_tested` (Verified live on 2026-11-05; 11 unit tests passing in `backend/tests/unit/test_phase3b_weather_and_intent.py`).
 
 ## 3. Crop Q&A: Kisan Call Centre (KCC)
 - **Source:** KCC query/answer records published on data.gov.in (also listed on AIKosh). It is a very large real dataset (tens of millions of calls since 2006) of farmers' queries and expert answers, served by API and split by state/period. Language coverage varies by state.

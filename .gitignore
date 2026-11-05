@@ -33,6 +33,7 @@ uploads/
 recordings/
 backend/data/raw/
 backend/data/index/
+backend/data/clips/
 data/*.sqlite*
 *.wav
 *.mp3
@@ -40,6 +41,7 @@ data/*.sqlite*
 *.ogg
 *.webm
 *.flac
+*.mp4
 !evaluation/audio_samples/README.md
 
 # OS / IDE

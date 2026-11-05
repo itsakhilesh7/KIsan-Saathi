@@ -102,6 +102,9 @@ async def transcribe_short(
     """Transcribes an audio clip (<= 30 s) using a single Gnani Prisma REST call."""
     cfg = settings or get_settings()
     lang = language_code or cfg.STT_LANGUAGE
+    # Gnani STT does not accept 'hi-en'; route code-mixed Hinglish to hi-IN
+    if lang in ("hi-en", "hinglish"):
+        lang = "hi-IN"
 
     if not os.path.exists(wav_path):
         raise FileNotFoundError(f"Audio file not found at {wav_path}")

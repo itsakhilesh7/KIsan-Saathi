@@ -20,13 +20,19 @@ from ..integrations.data_gov.mandi import fetch_mandi_prices
 from ..integrations.gnani import stt as gnani_stt
 from ..integrations.gnani import tts as gnani_tts
 from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
+from ..integrations.weather.open_meteo import fetch_weather_forecast
 from ..repositories.dialogue_state import DialogueStateRepository
 from ..repositories.events import EventRepository
 from ..repositories.user_preferences import SQLiteUserPreferencesRepository
 from ..schemas.intent import IntentType
 from . import audio_service
-from .answer_composer import UNSUPPORTED_INTENT_MESSAGES, compose_clarification_reply, compose_mandi_answer
-from .intent_service import detect_text_language, extract_intent
+from .answer_composer import (
+    UNSUPPORTED_INTENT_MESSAGES,
+    compose_clarification_reply,
+    compose_mandi_answer,
+    compose_weather_answer,
+)
+from .intent_service import classify_intent_with_llm_fallback, detect_text_language
 
 log = logging.getLogger("orchestrator")
 
@@ -212,16 +218,21 @@ async def handle_voice_message(
 
             # Stage 3: Intent extraction & Grounded Answering / LLM reasoning
             s = time.perf_counter()
-            parsed = extract_intent(
+            parsed, llm_disclosed = await classify_intent_with_llm_fallback(
                 transcript,
                 language=detected_lang,
+                settings=settings,
                 user_hash=phone_hash,
                 dialogue_repo=get_dialogue_repo(),
             )
 
             if parsed.intent == IntentType.MANDI_PRICE_QUERY:
                 if parsed.clarification_needed:
-                    reply_text = compose_clarification_reply(language=detected_lang, is_first_turn=is_first_turn)
+                    reply_text = compose_clarification_reply(
+                        language=detected_lang,
+                        is_first_turn=is_first_turn,
+                        clarification_type=parsed.clarification_type,
+                    )
                     disclosed_model = "grounded/dialogue_clarification"
                 else:
                     evidence = await fetch_mandi_prices(
@@ -240,6 +251,20 @@ async def handle_voice_message(
                         unit=settings.MANDI_PRICE_UNIT,
                     )
                     disclosed_model = "grounded/agmarknet_mandi"
+            elif parsed.intent == IntentType.WEATHER_QUERY:
+                target_dist = parsed.slots.district or "Warangal"
+                weather_ev = await fetch_weather_forecast(
+                    district=target_dist,
+                    state=parsed.slots.state or "Telangana",
+                    settings=settings,
+                )
+                reply_text = compose_weather_answer(
+                    weather_ev,
+                    language=detected_lang,
+                    is_first_turn=is_first_turn,
+                    requested_district=target_dist,
+                )
+                disclosed_model = "grounded/open_meteo_weather"
             elif parsed.intent == IntentType.GREETING_OR_HELP:
                 if is_first_turn:
                     greetings = {
@@ -263,7 +288,7 @@ async def handle_voice_message(
                     reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
                 else:
                     reply_text = UNSUPPORTED_INTENT_MESSAGES.get(detected_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
-                    disclosed_model = "rule_based/unsupported_intent"
+                    disclosed_model = llm_disclosed or "rule_based/unsupported_intent"
 
             timings["llm"] = round(time.perf_counter() - s, 2)
 
@@ -348,16 +373,21 @@ async def handle_text_message(
         user_lang = detected_script_lang or _resolve_user_language(phone_hash, None, settings)
         get_user_pref_repo().set_language(phone_hash, user_lang)
 
-        parsed = extract_intent(
+        parsed, llm_disclosed = await classify_intent_with_llm_fallback(
             text,
             language=user_lang,
+            settings=settings,
             user_hash=phone_hash,
             dialogue_repo=get_dialogue_repo(),
         )
 
         if parsed.intent == IntentType.MANDI_PRICE_QUERY:
             if parsed.clarification_needed:
-                reply = compose_clarification_reply(language=user_lang, is_first_turn=is_first_turn)
+                reply = compose_clarification_reply(
+                    language=user_lang,
+                    is_first_turn=is_first_turn,
+                    clarification_type=parsed.clarification_type,
+                )
                 disclosed_model = "grounded/dialogue_clarification"
             else:
                 evidence = await fetch_mandi_prices(
@@ -376,6 +406,20 @@ async def handle_text_message(
                     unit=settings.MANDI_PRICE_UNIT,
                 )
                 disclosed_model = "grounded/agmarknet_mandi"
+        elif parsed.intent == IntentType.WEATHER_QUERY:
+            target_dist = parsed.slots.district or "Warangal"
+            weather_ev = await fetch_weather_forecast(
+                district=target_dist,
+                state=parsed.slots.state or "Telangana",
+                settings=settings,
+            )
+            reply = compose_weather_answer(
+                weather_ev,
+                language=user_lang,
+                is_first_turn=is_first_turn,
+                requested_district=target_dist,
+            )
+            disclosed_model = "grounded/open_meteo_weather"
         elif parsed.intent == IntentType.GREETING_OR_HELP:
             if is_first_turn:
                 greetings = {
@@ -399,7 +443,7 @@ async def handle_text_message(
                 reply, disclosed_model = await llm_adapter.answer(text, lang=user_lang)
             else:
                 reply = UNSUPPORTED_INTENT_MESSAGES.get(user_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
-                disclosed_model = "rule_based/unsupported_intent"
+                disclosed_model = llm_disclosed or "rule_based/unsupported_intent"
 
         await channel.send_text(sender_phone, reply)
         await get_event_repo().log_event({
