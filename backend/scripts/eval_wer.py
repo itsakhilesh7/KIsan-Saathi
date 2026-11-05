@@ -24,6 +24,7 @@ import jiwer
 from ..app.core.config import get_settings
 from ..app.integrations.gnani.stt import transcribe
 from ..app.services import audio_service
+from ..app.services.intent_service import extract_intent
 
 # Indic + English punctuation normalization pattern (including Devanagari danda)
 PUNCT_REGEX = re.compile(r"[\.,\?!;:\"'—\-_।॥\(\)\[\]\{\}]")
@@ -144,14 +145,30 @@ async def evaluate_manifest(
             wav_16k = os.path.join(tmp_dir, "eval.wav")
             await asyncio.to_thread(audio_service.to_wav16k, str(audio_file), wav_16k)
 
+            is_hinglish = ref_lang_raw.lower() in ("hinglish", "hi-en")
+            expected_intent = row.get("expected_intent", "").strip()
+
             for mode in eval_modes:
                 lang_arg = "indic-auto" if mode == "indic-auto" else ref_lang_code
                 stt_res = await transcribe(wav_16k, language_code=lang_arg, settings=settings)
                 hyp = stt_res.get("transcript", "")
                 hyp_norm = normalize_text(hyp)
 
-                wer_score = jiwer.wer(ref_norm, hyp_norm) if ref_norm else 0.0
-                cer_score = jiwer.cer(ref_norm, hyp_norm) if ref_norm else 0.0
+                if is_hinglish:
+                    # Hinglish Roman references cannot be scored via string-distance WER against Devanagari output.
+                    wer_score = None
+                    cer_score = None
+                    parsed = extract_intent(hyp)
+                    intent_correct = (parsed.intent == expected_intent) if expected_intent else True
+                    intent_res_str = f"Intent: {parsed.intent} ({'PASS' if intent_correct else 'FAIL'})"
+                else:
+                    if ref_norm == hyp_norm:
+                        wer_score = 0.0
+                        cer_score = 0.0
+                    else:
+                        wer_score = round(jiwer.wer(ref_norm, hyp_norm) if ref_norm else 0.0, 4)
+                        cer_score = round(jiwer.cer(ref_norm, hyp_norm) if ref_norm else 0.0, 4)
+                    intent_res_str = ""
 
                 record = {
                     "file": audio_file.name,
@@ -160,11 +177,14 @@ async def evaluate_manifest(
                     "detected_language": stt_res.get("detected_language_code"),
                     "reference": reference,
                     "hypothesis": hyp,
-                    "wer": round(wer_score, 4),
-                    "cer": round(cer_score, 4),
+                    "wer": wer_score,
+                    "cer": cer_score,
                 }
                 results.append(record)
-                print(f"    Mode: {mode:<10} | WER: {wer_score:6.2%} | CER: {cer_score:6.2%} | Detected: {stt_res.get('detected_language_code')}")
+                if is_hinglish:
+                    print(f"    Mode: {mode:<10} | {intent_res_str} | Detected: {stt_res.get('detected_language_code')}")
+                else:
+                    print(f"    Mode: {mode:<10} | WER: {wer_score:6.2%} | CER: {cer_score:6.2%} | Detected: {stt_res.get('detected_language_code')}")
 
     # Save detailed CSV
     os.makedirs(os.path.dirname(output_csv) or ".", exist_ok=True)
@@ -182,13 +202,25 @@ async def evaluate_manifest(
     print("-" * 60)
 
     grouped = defaultdict(list)
+    hinglish_records = []
     for r in results:
-        grouped[(r["target_language"], r["mode"])].append(r)
+        if r["target_language"].lower() in ("hinglish", "hi-en"):
+            hinglish_records.append(r)
+        else:
+            grouped[(r["target_language"], r["mode"])].append(r)
 
     for (lang, mode), group in sorted(grouped.items()):
-        avg_wer = sum(g["wer"] for g in group) / len(group)
-        avg_cer = sum(g["cer"] for g in group) / len(group)
+        wer_vals = [g["wer"] for g in group if g["wer"] is not None]
+        cer_vals = [g["cer"] for g in group if g["cer"] is not None]
+        avg_wer = sum(wer_vals) / len(wer_vals) if wer_vals else 0.0
+        avg_cer = sum(cer_vals) / len(cer_vals) if cer_vals else 0.0
         print(f"{lang:<12} | {mode:<12} | {len(group):<6} | {avg_wer:<10.2%} | {avg_cer:<10.2%}")
+
+    if hinglish_records:
+        print("\n--- Hinglish Evaluation (Intent & Slot Extraction) ---")
+        print("Note: Hinglish audio is transcribed into Devanagari script by Prisma STT v3.0.")
+        print("String-distance WER is not applicable against Roman script references.")
+        print(f"Hinglish evaluated utterances: {len(hinglish_records)}")
 
 
 if __name__ == "__main__":

@@ -129,13 +129,13 @@ Unknown = `null`. Dates/units validated in code. The model cannot name tools, UR
 - `POST /api/evaluation/run`: dev-only, protected.
 
 ## 7. Retrieval design (Crop Saathi)
-1. **Sources:** KCC records from data.gov.in (state/district/crop/season/date fields as available), plus a few curated ICAR/KVK documents. Keep original URL, retrieval time, hash.
-2. **Clean:** deduplicate, drop empty answers, normalise crop names, keep original text untouched in a `raw_text` column.
-3. **Index:** embed `query + answer` text (not answer only) with metadata (state, district, crop, date, language). Index built offline; vectors stored in pgvector/FAISS.
-4. **Retrieve:** embed the farmer's question, filter by crop/state where known, take top-k, rerank by metadata match and recency, enforce a similarity threshold.
-5. **Answer:** composer sees only retrieved text; chemical content is stripped by `safety.py`; cites record ids with state/district/date.
-6. **Fallback:** below threshold, conflicting, or out of corpus -> safe fallback to 1551.
-7. **Eval:** held-out KCC questions compared with and without retrieval (see evaluation plan).
+1. **Sources:** Curated official advisories from PJTSAU, ICAR institutes (CRIDA, CICR, IIRR, IIHR), KVK portal, and Telangana Agriculture Department. (KCC has no usable API/CSV for Telangana; retrieval design is strictly generic: documents -> chunks with source metadata). Keep original URL, publisher, publication date, retrieval time, content hash.
+2. **Clean & Chunk:** chunk by section (approx 150 to 350 words), preserve original text untouched in `raw_text`, annotate each chunk with `source_url`, `publisher`, `publication_date`, `crop`, `language`, and `content_hash`.
+3. **Index:** embed chunk text with multilingual embeddings (offline build). Pluggable backend (in-memory cosine similarity / FAISS / pgvector).
+4. **Retrieve:** embed the farmer's question, filter by crop where known, take top-k, enforce a similarity threshold.
+5. **Answer:** composer sees only retrieved chunks and question; chemical content and dosage are suppressed by `safety.py`; cites document title, publisher, date, URL.
+6. **Fallback:** below threshold, ambiguous, or out of corpus -> safe fallback to Kisan Call Centre (1551) or local KVK.
+7. **Eval:** test queries compared with and without retrieval; safety refusal suite (E4).
 
 ## 8. Data model (create only what the current phase needs; use migrations)
 `regions`, `conversations` (hashed user id, language, created_at), `interactions` (transcript, intent, request_json, answer_text, status, timings jsonb, llm_disclosed_name), `evidence_records` (interaction_id, source_type, url, dates, payload jsonb), `kcc_records` (raw fields + clean fields + embedding), `advisory_documents`/`advisory_chunks`, `eval_cases`, `eval_runs`, `events` (append-only log for the dashboard).

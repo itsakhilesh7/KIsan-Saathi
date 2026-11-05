@@ -63,9 +63,18 @@ WEATHER_KEYWORDS = {
     # Telugu
     "వర్షం", "వాన", "వాతావరణం", "ఎండ", "చలి", "ఉష్ణోగ్రత", "తుఫాను", "గాలివాన", "వర్షాలు", "నీళ్లు పెట్టాలా",
     # Hindi
-    "बारिश", "मौसम", "तापमान", "बरसात", "धूप", "सर्दी", "हवा", "तूफान", "वर्षा", "सिंचाई",
+    "बारिश", "मौसम", "तापमान", "बरसात", "धूप", "सर्दी", "हवा", "तूफान", "वर्षा", "सिंचाई", "रेन", "इरीगेशन",
     # English / Hinglish
     "weather", "rain", "rainfall", "forecast", "temperature", "mausam", "barish", "barsat", "irrigation",
+}
+
+CROP_ADVISORY_KEYWORDS = {
+    # Telugu
+    "పంట", "ఆకులు", "తెగులు", "పురుగు", "మచ్చలు", "సలహా", "పసుపు", "ముడత", "ఎండిపోవడం", "సస్యరక్షణ",
+    # Hindi / Hinglish Devanagari
+    "फसल", "पत्ते", "रोग", "कीड़ा", "कीड़े", "धब्बे", "बीमारी", "सलाह", "कर्ल", "प्लांट", "पीले", "सूख",
+    # English / Hinglish Latin
+    "crop", "disease", "pest", "symptom", "leaves", "leaf", "curl", "spots", "yellowing", "advisory", "plant",
 }
 
 # Unicode regex patterns for script detection
@@ -118,6 +127,7 @@ def extract_intent(
     language: str = "te-IN",
     user_hash: str | None = None,
     dialogue_repo: DialogueStateRepository | None = None,
+    enable_crop_advisory: bool = False,
 ) -> ParsedIntent:
     """Extracts user intent and slots, resolving against dialogue state if clarification pending."""
     clean_text = text.strip()
@@ -218,6 +228,31 @@ def extract_intent(
     )
 
     if not is_mandi:
+        # Check for crop advisory query (enabled when crop advisory retrieval corpus is wired)
+        has_crop_kw = any(ck in clean_text.lower() for ck in CROP_ADVISORY_KEYWORDS)
+        if has_crop_kw and enable_crop_advisory:
+            resolved_crop = matched_commodity
+            if not resolved_crop:
+                for token in re.split(r"[\s,?!.]+", clean_text):
+                    if token:
+                        c = resolve_commodity(token)
+                        if c:
+                            resolved_crop = c
+                            break
+            missing_crop = ["crop"] if not resolved_crop else []
+            return ParsedIntent(
+                intent=IntentType.CROP_ADVISORY_QUERY,
+                language=language,
+                slots=IntentSlots(
+                    crop=resolved_crop,
+                    commodity=resolved_crop,
+                    district=matched_district,
+                    state="Telangana",
+                ),
+                missing_required_slots=missing_crop,
+                clarification_needed=len(missing_crop) > 0,
+            )
+
         return ParsedIntent(
             intent=IntentType.UNSUPPORTED_OR_UNCLEAR,
             language=language,

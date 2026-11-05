@@ -130,7 +130,7 @@ async def test_fetch_mandi_prices_empty_result():
     mock_resp.json.return_value = {"status": "ok", "total": 0, "count": 0, "records": []}
     mock_http.get.return_value = mock_resp
 
-    evidence = await fetch_mandi_prices(commodity="Cotton", settings=settings, client=mock_http)
+    evidence = await fetch_mandi_prices(commodity="Cotton", settings=settings, client=mock_http, use_cache=False)
     assert evidence == []
 
 
@@ -169,7 +169,7 @@ async def test_fetch_mandi_prices_fails_after_max_retries():
 
     with patch("asyncio.sleep", new_callable=AsyncMock):
         with pytest.raises(MandiAPIError):
-            await fetch_mandi_prices(commodity="Cotton", settings=settings, client=mock_http)
+            await fetch_mandi_prices(commodity="Cotton", settings=settings, client=mock_http, use_cache=False)
 
 
 def test_staleness_check():

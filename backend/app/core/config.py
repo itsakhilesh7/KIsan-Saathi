@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     DATA_GOV_API_KEY: str = ""
     DATA_GOV_BASE_URL: str = "https://api.data.gov.in/resource"
     MANDI_RESOURCE_ID: str = "9ef84268-d588-465a-a308-a864a43d0070"
-    MANDI_PRICE_UNIT: str = ""
+    MANDI_PRICE_UNIT: str = "Rs per quintal"
     KCC_RESOURCE_IDS: str = ""
 
     # ---- Open-Meteo ----

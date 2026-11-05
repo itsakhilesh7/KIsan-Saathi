@@ -29,12 +29,12 @@ Do not re-decide accepted items. Do not silently resolve pending ones: ask.
 | D-002 | Channels: WhatsApp (primary) + web demo (secondary) | Accepted | WhatsApp primary target; Telegram fallback ACTIVE for development due to Meta test account locking (error 131031). WhatsApp remains target channel if account unlocked/replaced. |
 | D-003 | STT: Prisma v3.0 over REST, `indic-auto` + explicit language | Accepted | Verify Telugu/Hinglish quality (Phase 0/1) |
 | D-004 | TTS: Timbre v2.5 default; compare v3.0 for Telugu | Accepted | Choose by listening tests |
-| D-005 | Capabilities: mandi, weather, KCC-grounded crop Q&A | Accepted | |
+| D-005 | Capabilities: mandi, weather, curated official crop advisories | Accepted | KCC has no usable API/CSV for Telangana; Crop Saathi uses curated official advisories (PJTSAU, ICAR, KVK); retrieval design is generic (documents -> chunks with source metadata). |
 | D-006 | Backend: FastAPI layered structure; migrate `existing-code/` | Accepted | Keep existing tests passing |
 | D-007 | Chemical doses suppressed by default (`ALLOW_CHEMICAL_DETAILS=false`) | Accepted | Revisit only with reviewed sources |
 | D-008 | Embeddings: hosted API at query time, offline index build | **Pending** | Recommend a hosted multilingual embedding API; test Telugu retrieval on 30 queries first |
-| D-009 | LLM hosting for Evon | **Pending** | Order: Gnani-hosted if it exists (ask Discord) -> rented GPU with vLLM/SGLang -> stand-in model with disclosure |
-| D-010 | Pilot region and crops | **Pending confirmation** | Default in `config/pilot.example.yaml`; confirm on Day 1 against live data |
+| D-009 | LLM hosting for Evon | Accepted | No hosted Evon endpoint exists (confirmed on Discord). Development continues on stand-in model (always disclosed via `LLM_DISCLOSED_NAME`). User will test Evon on rented GPU around 7 Nov if weights are provided. |
+| D-010 | Pilot region and crops | Accepted (Confirmed) | Confirmed by developer on 2026-11-05: Warangal, Telangana; crops: paddy, cotton, chilli (green & dry with clarification), tomato; maize removed; state fallback for cotton/dry chilli. `confirmed: true` in `config/pilot.yaml`. |
 | D-011 | Audio retention | Proposed | 24 h default (`AUDIO_RETENTION_HOURS`); delete after processing in demo |
 | D-012 | Deployment hosts | **Pending** | API: Render/Railway/Fly; web: Vercel; DB: Supabase |
 | D-013 | PSTN calling / WhatsApp Calling API | Deferred | Stretch: browser click-to-call only if all exit criteria pass |

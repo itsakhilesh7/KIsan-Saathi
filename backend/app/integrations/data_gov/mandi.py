@@ -15,6 +15,7 @@ from ...core.config import Settings, get_settings
 from ...core.http_client import get_http_client
 from ...schemas.evidence import Evidence, SourceType
 from .commodity_resolver import resolve_commodity
+from .mandi_cache import MandiCache, get_mandi_cache
 
 log = logging.getLogger("integrations.data_gov.mandi")
 
@@ -103,6 +104,8 @@ async def fetch_mandi_prices(
     offset: int = 0,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
+    cache: MandiCache | None = None,
+    use_cache: bool = True,
 ) -> list[Evidence]:
     """Queries Agmarknet daily mandi prices from data.gov.in and normalizes to Evidence objects."""
     cfg = settings or get_settings()
@@ -141,17 +144,61 @@ async def fetch_mandi_prices(
 
     log.info("Querying mandi prices with filters: %s", filters)
 
+    active_cache = cache or get_mandi_cache() if use_cache else None
+    raw_records: list[dict[str, Any]] = []
+    is_state_fallback = False
+    api_failed = False
+
     try:
         resp = await _get_with_retry(c, url, params=params, timeout=60.0)
         body = resp.json()
+        raw_records = body.get("records", [])
     except Exception as e:
-        log.exception("Failed to query data.gov.in mandi dataset")
-        raise MandiAPIError(f"Query to data.gov.in failed: {e}") from e
+        log.warning("Failed to query data.gov.in mandi dataset live (%s), checking cache...", e)
+        api_failed = True
 
-    raw_records = body.get("records", [])
     if not raw_records:
-        log.info("Zero mandi records returned for filters: %s", filters)
-        return []
+        if not use_cache:
+            if api_failed:
+                raise MandiAPIError(f"Query to data.gov.in failed: {filters}")
+            return []
+
+        # Check cache for district query first
+        if active_cache:
+            cached_evidence = active_cache.query_cached(
+                state=state, district=district, commodity=search_commodity, market=market
+            )
+            if cached_evidence:
+                log.info("Returning %d cached mandi records for %s", len(cached_evidence), filters)
+                return cached_evidence
+
+        # Check state-level fallback for cotton/dry chilli when district has no record
+        if district and search_commodity in ("Cotton", "Dry Chillies"):
+            log.info("District %s has no records for %s; trying state-level fallback...", district, search_commodity)
+            try:
+                state_params = dict(params)
+                state_params.pop("filters[district]", None)
+                state_resp = await _get_with_retry(c, url, params=state_params, timeout=60.0)
+                state_body = state_resp.json()
+                raw_records = state_body.get("records", [])
+                if raw_records:
+                    is_state_fallback = True
+            except Exception as se:
+                log.warning("State-level live query failed (%s); checking cache...", se)
+
+            if not raw_records and active_cache:
+                cached_state = active_cache.query_cached(state=state, district=None, commodity=search_commodity)
+                if cached_state:
+                    for ev in cached_state:
+                        ev.data["is_state_fallback"] = True
+                    log.info("Returning %d cached state-level records for %s", len(cached_state), search_commodity)
+                    return cached_state
+
+        if not raw_records:
+            if api_failed:
+                raise MandiAPIError(f"Query to data.gov.in failed and no cached records exist for {filters}")
+            log.info("Zero mandi records returned for filters: %s", filters)
+            return []
 
     evidence_list: list[Evidence] = []
     for r in raw_records:
@@ -195,6 +242,7 @@ async def fetch_mandi_prices(
                 "max_price": max_p,
                 "modal_price": modal_p,
                 "unit": "price as reported",
+                "is_state_fallback": is_state_fallback,
             },
             limitations=[
                 "Daily reported price from Agmarknet, not a live real-time continuous quote.",
@@ -202,5 +250,13 @@ async def fetch_mandi_prices(
             ],
         )
         evidence_list.append(ev)
+
+    # Save to local cache
+    try:
+        cache.save_evidence(evidence_list)
+    except Exception as ce:
+        log.warning("Failed to save evidence to mandi cache: %s", ce)
+
+    return evidence_list
 
     return evidence_list

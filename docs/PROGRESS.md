@@ -6,54 +6,77 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 **REPOSITORY VISIBILITY WARNING:** The GitHub remote repository (`https://github.com/itsakhilesh7/KIsan-Saathi.git`) is confirmed **PUBLIC**. All commits and history are publicly visible. Do NOT stage or commit real API keys, tokens, `.env` files, or raw audio recordings. Always run `python scripts/scan_secrets.py` before pushing.
 
 ### Phase Status (P0..P8)
-- **P0 (Access & Audit):** Done (offline parts complete; live API keys pending from developer).
+- **P0 (Access & Audit):** Done.
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
-- **P2 (Live Loop / Telegram Channel Fallback):** In Progress. WhatsApp live steps paused due to Meta test account blocker (error 131031: "Business Account locked" on every send). Activated Telegram fallback channel (D-002) for immediate live pipeline development and testing without tunnel requirement.
-- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), and Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback) Done (90 unit tests passing). KCC pending Phase 3C.
-- **P4 (Crop Q&A + Safety):** Not started.
+- **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), and Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation) Done (96 unit tests passing). Curated crop advisory proposal prepared for Step 3.1.
+- **P4 (Crop Q&A + Safety):** Step 3.1 completed (curated advisory document list proposed; awaiting approval).
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
-- **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py`) run live across 10 user audio clips against Gnani Prisma STT (WER: Hindi 10.12%, Telugu 12.40%).
-- **P7 (Hardening & Review):** Not started.
+- **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py`) polished with identical normalization and Hinglish intent extraction.
+- **P7 (Hardening & Review):** In Progress. Centralized user-facing strings into `backend/app/core/messages.py` and generated `docs/WORDING_REVIEW.md`.
 - **P8 (Submission):** Not started.
 
 ### What works right now
 - Backend FastAPI app with Request-ID middleware, structured JSON logging, and `/api/health`.
-- Hardened WhatsApp webhook with constant-time HMAC-SHA256 signature checking and SQLite deduplication.
-- Production startup fail-fast checks (rejects empty `META_APP_SECRET` and default `PHONE_HASH_SALT` / `WHATSAPP_VERIFY_TOKEN`).
-- Outbound HTTP connection pooling via shared `httpx.AsyncClient` (`core/http_client.py`) with sensible defaults and enforced per-request timeouts (STT 60s, TTS 90s, LLM 120s, WhatsApp media 60s).
-- Audio limits: streaming download size guard (`AUDIO_MAX_MB`), duration limit check (`AUDIO_MAX_SECONDS=60`), chunking for 25-60s, and MIME type allowlist (`audio/ogg`, `audio/wav`, `audio/mp4` for m4a, `audio/aac`, `audio/amr`, `audio/mpeg`).
-- User preference persistence (`repositories/user_preferences.py`): tracks last seen language per salted phone hash; unknown-language fallbacks strictly route to pilot primary language (`te-IN` Lavanya).
-- Persistent non-blocking audit events (`repositories/events.py` in SQLite + JSONL); transcripts omitted by default (`STORE_RAW_TRANSCRIPTS=false`).
-- Fully language-aware prompts (empty transcript, audio too long, fallbacks referencing 1551) across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
-- Telegram fallback channel adapter & poller (`channels/telegram/`) with token log-redaction filter.
-- Agmarknet daily mandi price connector (`integrations/data_gov/mandi.py`) with pagination, retries on 429/5xx, sanitized source URLs, and normalization to `Evidence` schema.
-- Commodity alias dictionary (`config/commodity_aliases.yaml`) mapping farmer terms in Telugu, Hindi, and English strictly to confirmed dataset strings, with disambiguation support for ambiguous crops like "మిర్చి" (Green Chilli vs Dry Chillies).
+- Telegram live channel polling runner (`backend/scripts/run_telegram_polling.py`) verified live with end-to-end voice notes and text messages.
+- Live voice pipeline round-trip: download voice OGG/Opus -> ffmpeg wav16k -> Gnani Prisma STT v3.0 -> intent/tool processing -> grounded answer -> Gnani Timbre TTS v2.5 -> OGG/Opus voice note response + text copy.
+- Confirmed Pilot (`config/pilot.yaml` with `confirmed: true`): Warangal district (Telangana), APMCs Warangal & Cherial, crops paddy (`Common` and `Fine/Superfine/Grade A`), cotton, chilli (`Green Chilli` and `Dry Chillies` with clarification), and tomato.
+- Mandi price units confirmed as **Rs per quintal** (`MANDI_PRICE_UNIT: str = "Rs per quintal"`), with natural localized wording (`క్వింటాలుకు`, `प्रति क्विंटल`, `per quintal`).
+- Persistent SQLite Mandi Cache (`integrations/data_gov/mandi_cache.py`) protecting against data.gov.in downtime/502s, with state-level fallback for cotton/dry chilli when Warangal district reports no records.
+- Variety and grade separation in grounded answer composer: distinct varieties (e.g. `Paddy (Common)` vs `Paddy (Fine/Superfine)`) are explicitly named and never mixed.
 - Open-Meteo 3-day weather forecast connector (`integrations/weather/open_meteo.py`) with geocoding, allowlisted endpoints, in-memory caching, and `Evidence` normalization.
-- Grounded answer composers (`services/answer_composer.py`) for mandi prices and weather forecasts enforcing $\le 3$ sentences, strictly copied verified numbers, uncertainty phrasing, and safety constraints (never claiming conditions are "safe" for spraying or farm operations).
-- LLM-assisted intent fallback (`services/intent_service.py`) using strict Pydantic JSON schema and retry when rule-based classifier encounters unsupported or unclear text.
-- Speech evaluation script (`scripts/eval_wer.py`) tested live across 10 audio clips with Gnani Prisma STT v3.0.
-- Complete unit test suite: 90 unit tests passing in ~15s (`pytest backend/tests/unit/`).
+- Grounded answer composers (`services/answer_composer.py`) for mandi prices and weather forecasts enforcing $\le 3$ sentences, strictly verified numbers, uncertainty phrasing, and safety constraints (never claiming conditions are "safe" for spraying or farm operations).
+- Centralized user-facing strings module (`core/messages.py`) and review catalog (`docs/WORDING_REVIEW.md`) fixing non-standard Telugu (`హవామాన` -> `వాతావరణం`).
+- Speech evaluation script (`scripts/eval_wer.py`) with identical normalization (WER 0 mathematically guarantees CER 0) and dedicated Hinglish intent/slot extraction.
+- Complete unit test suite: **96 unit tests passing** in ~28s (`pytest backend/tests/unit/`).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
 |---|---|---|
-| Gnani Prisma STT | LIVE Verified | Live STT verified on 2026-11-05 across 10 audio clips via `eval_wer.py` (Avg WER: Hindi 10.12%, Telugu 12.40%; TEL-04 achieved 0.00% WER). Note: `hi-en` must route as `hi-IN` to API. |
-| Gnani Timbre TTS | MOCKED | Endpoint & voice mapping coded per docs; live call requires test verification. |
+| Gnani Prisma STT | LIVE Verified | Live STT verified on 2026-11-05 across 10 audio clips via `eval_wer.py` (Avg WER: Hindi 10.12%, Telugu 12.40%; TEL-04 achieved 0.00% WER) and in live Telegram voice notes (~0.4-0.6s latency). Note: `hi-en` routes as `hi-IN`. |
+| Gnani Timbre TTS | LIVE Verified | Live TTS verified on 2026-11-05 during live Telegram voice note replies (`te-IN` Lavanya, ~1.4-3.8s generation and conversion latency). |
 | Meta Webhook / Send | BLOCKED (Error 131031) | Meta test account returns error 131031 ("Business Account locked"). Handshake & signature verified in mocks. WhatsApp live steps paused. |
-| Telegram Channel | LIVE Verified | Live polling runner tested and confirmed working by user. |
-| data.gov.in (Agmarknet Mandi) | LIVE Verified | Verified live on 2026-11-04 (331 records) & 2026-11-05 (304 records for Telangana, 22 in Warangal). |
+| Telegram Channel | LIVE Verified | Live polling runner tested and confirmed working live by user with both text and voice notes. |
+| data.gov.in (Agmarknet Mandi) | LIVE Verified | Verified live on 2026-11-04 (331 records) & 2026-11-05 (304 records for Telangana). Protected by `MandiCache`. |
 | Open-Meteo | LIVE Verified | Live 3-day forecast and geocoding verified on 2026-11-05 (sanitized fixture in `backend/tests/fixtures/weather_sample.json`). |
-| Evon / LLM | MOCKED | Tested locally in echo mode; live completions require `LLM_BASE_URL`. |
-| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup, events, user preferences, and dialogue state tables verified with `tmp_path`. Ephemeral hosting note: SQLite loses data on redeploy; will move events to Supabase/PostgreSQL in Phase 6. |
+| Evon / LLM | Stand-in / Echo | Stand-in model active with mandatory disclosure per D-009. Evon on rented GPU planned ~7 Nov if weights provided. |
+| Persistence (SQLite) | unit-tested, local SQLite | SQLite dedup, events, user preferences, dialogue state, and mandi cache tables verified with `tmp_path`. Ephemeral hosting note: SQLite loses data on redeploy; will move events to Supabase/PostgreSQL in Phase 6. |
 
-- **Known issues and risks:** Windows loopback sockets in sandbox mode block synchronous `TestClient` unless running with sandbox bypass or live network. Prisma STT live language code format is unverified (`format unverified` normalization layer in place). **SQLite on Ephemeral Hosting:** Hosting platforms (e.g., Render, Railway without persistent disks) reset local SQLite files on redeployment; audit events and deduplication tables will migrate to managed Supabase/Postgres (`DATABASE_URL`) in Phase 6.
-- **Needs from developer:** Fill `GNANI_API_KEY`, `WHATSAPP_*` credentials in `backend/.env` per `docs/MANUAL_TASKS.md`.
-- **Decisions pending:** D-008 (Hosted embedding API choice), D-009 (Evon hosting on Discord), D-010 (Pilot confirmation).
-- **Exact next recommended task:** Developer provides live Gnani and Meta responses to confirm real formats before Phase 2.
+- **Known issues and risks:** `api.data.gov.in` intermittently returns 502 Bad Gateway or read timeouts on wide queries; handled via exponential backoff retries and the persistent `MandiCache`.
+- **Decisions resolved:** D-009 (Evon on Discord confirmed non-existent; stand-in with disclosure active), D-010 (Pilot confirmed: Warangal, Telangana).
+- **Decisions pending:** D-008 (Hosted embedding API choice for Crop Saathi).
+- **Exact next recommended task:** User approves curated advisory document list (Step 3.1) so extraction and offline indexing (Step 3.2 & 3.3) can proceed.
 
 ---
 
 ## LOG
+
+### [2026-11-05 17:00] Phase 3C (Part 1 & 2): Pilot Confirmation, Mandi Cache, Variety Separation, Wording Centralization & WER Polish
+- **Goal and phase:** Phase 3C (Parts 1 & 2). Applied user confirmations, hardened mandi against data.gov.in 502/timeouts via SQLite cache, added state fallback, separated crop varieties/grades, centralized user strings into `messages.py`, generated `docs/WORDING_REVIEW.md`, and polished speech evaluation logic.
+- **What changed:**
+  - **Pilot & Settings Confirmation:** Set `confirmed: true` in `config/pilot.yaml` with Warangal, Telangana, and confirmed crops (Paddy Common & Fine, Cotton, Green & Dry Chilli, Tomato). Set `MANDI_PRICE_UNIT: str = "Rs per quintal"` with natural language localization across te, hi, en, hi-en. Updated `test_config.py` and `.env.example`.
+  - **Decisions & Specs Consistency:** Updated `docs/decisions.md` (D-009 Evon, D-010 Pilot, D-005 Curated Advisories), `docs/data-sources.md`, `prd.md` (sections 4 & 5.6), and `architecture.md` (section 7).
+  - **Live Telegram Voice Logging:** Extracted real timings from live Telegram voice session (`data/events.sqlite3`): 3 Telugu voice notes processed with Prisma STT v3.0 and Timbre TTS v2.5 (`te-IN` Lavanya), exhibiting 4.2s, 7.28s, and 9.17s total round-trips (STT ~0.4–0.6s, TTS ~1.4–3.8s).
+  - **Speech Evaluation Polish (`backend/scripts/eval_wer.py`):**
+    - Mathematically guaranteed WER 0 gives CER 0 by calculating both metrics on the exact same normalized strings; added unit test `test_hin02_identical_normalization_gives_zero_wer_and_cer`.
+    - Separated Hinglish from string-distance WER due to script mismatch (Roman reference vs Devanagari STT output); evaluated Hinglish by intent/slot extraction (`weather_query` PASS, `crop_advisory_query` PASS).
+    - Documented HTTP 400 `INVALID_LANGUAGE_CODE` on `hi-en` and routing in `docs/gnani-api-notes.md`.
+  - **Mandi Freshness, Caching & Variety Separation:**
+    - Discovered `api.data.gov.in` returns HTTP 502 / read timeouts on unindexed queries.
+    - Implemented `MandiCache` in `backend/app/integrations/data_gov/mandi_cache.py` (thread-safe SQLite cache).
+    - Added state-level fallback for Cotton and Dry Chillies when Warangal district reports zero records, marking evidence with `is_state_fallback=True`.
+    - Updated `compose_mandi_answer` to group by `(market, variety)` and explicitly state variety names (e.g. `Paddy (Common)` vs `Paddy (Fine/Superfine/Grade A)`) so varieties are never merged or mixed.
+  - **Wording Consolidation & Telugu Fix:**
+    - Created `backend/app/core/messages.py` holding all user-facing strings across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+    - Replaced non-standard `"హవామాన"` with standard Telugu `"వాతావరణం / వాతావరణ అంచనాలు"`.
+    - Generated `docs/WORDING_REVIEW.md` cataloging every message with reviewer notes and flagged terms.
+  - **Curated Extension Document List Prepared (Step 3.1):** Compiled list of 10 official publications from PJTSAU, ICAR-IIRR, ICAR-CICR, ICAR-IIHR, and SKLTSHU covering cotton, paddy, chilli, and tomato for user approval gate.
+- **Commands run and their real results:**
+  - `python -m backend.scripts.eval_wer`: Re-run on 10 clips; verified Hindi (WER 10.12%, CER 4.19%), Telugu (WER 12.40%, CER 3.89%), and Hinglish intent pass.
+  - `pytest backend/tests/unit/`: 96 passed, 0 failed in 28.64s.
+  - `ruff check backend/ scripts/`: All checks passed.
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 96 passed (2 live fixtures verified + 94 mocked), 0 failed.
 
 ### [2026-11-05 16:15] Phase 3B: Speech Evaluation, Live Telangana Pilot Analysis, Weather Connector & Safe Intent Fallback
 - **Goal and phase:** Phase 3B. Evaluated real user speech recordings against Gnani Prisma STT, performed live mandi data analysis across Telangana and Warangal for pilot selection, built Open-Meteo weather integration, implemented multi-turn chilli disambiguation, and added safe LLM-assisted intent fallback with strict schema validation.
@@ -82,7 +105,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
     - Saved live fixture: `backend/tests/fixtures/weather_sample.json` and `geocoding_warangal_sample.json`.
   - **Grounded Weather Composer (`backend/app/services/answer_composer.py`):**
     - Composes natural language response $\le 3$ sentences copying exact temperatures and rain probabilities from `Evidence`.
-    - Includes uncertainty caveats ("forecast shows...", "హవామాన అంచనాల ప్రకారం...").
+    - Includes uncertainty caveats ("forecast shows...", "వాతావరణ అంచనాల ప్రకారం...").
     - **Safety Constraint (Rule 1.1):** Enforces assertion ensuring word "safe" is never used regarding spraying, irrigation, or harvesting. Strips prompt injection tokens from district slots.
   - **LLM-Assisted Intent Fallback (`backend/app/services/intent_service.py`):**
     - When rule-based classification returns `UNSUPPORTED_OR_UNCLEAR` and `LLM_BASE_URL` is configured, calls LLM with strict JSON schema and Pydantic validation.

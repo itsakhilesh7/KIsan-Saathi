@@ -18,7 +18,7 @@ It is not a general chatbot. It never invents prices, forecasts, doses, diagnose
 - Secondary: agricultural reviewers (domain validation), judges/evaluators (need a link and visible sources).
 
 ## 4. Pilot scope
-Configured in `config/pilot.yaml` (see `config/pilot.example.yaml`). Proposed default: Telangana/Warangal, crops cotton, chilli, paddy; optional second pilot Rajasthan/Jaipur for Hindi after Phase 4. Day-1 task is to verify these against live data; code must never hardcode them. Do not claim nationwide coverage.
+Configured in `config/pilot.yaml`. Confirmed by developer on 2026-11-05: Telangana/Warangal, crops paddy (`Paddy(Common)`, `Paddy(Fine/Superfine/Grade A)`), cotton, chilli (green AND dry, with clarification question), tomato. Maize removed as live data has no records today. State-level fallback enabled for cotton and dry chilli when the district has no record. `confirmed: true`. Optional second pilot Rajasthan/Jaipur for Hindi deferred after Phase 4.
 
 ## 5. Capabilities
 
@@ -42,9 +42,8 @@ data.gov.in Agmarknet daily prices. Filter by state/district/market/commodity; s
 Open-Meteo forecast for the pilot location (or a user-confirmed district). Show location, period, units, retrieval time; distinguish current from forecast; use uncertain language; never say spraying or irrigating is "safe".
 
 ### 5.6 Crop Saathi (grounded Q&A)
-- Corpus: real **KCC query/answer records** (data.gov.in) for the pilot state/crops, plus a small curated set (about 5 to 10) of ICAR/KVK/state university documents if time allows.
-- Retrieval with metadata filters (state, district, crop, season/date). Every answer cites the record or document (source, date, region).
-- Label KCC material as **historical call-centre advice**, not a current official recommendation.
+- Corpus: **Curated official university & ICAR extension advisories** (PJTSAU, ICAR-CRIDA/CICR/IIRR/IIHR, KVK, Telangana Agriculture Department) for pilot crops (paddy, cotton, chilli, tomato). Finding (2026-11-05): no usable real-time API or downloadable CSV exists for KCC data in the pilot state on data.gov.in; generic retrieval architecture (`documents -> chunks -> metadata`) remains identical.
+- Retrieval with metadata filters (state, district, crop, season/date). Every answer cites the source document (title, publisher, date, region).
 - Weak, conflicting or out-of-scope retrieval produces a safe fallback: say you are unsure and suggest the Kisan Call Centre (**1551**) or the local agriculture officer / KVK.
 - **No pesticide/fertiliser dose or chemical mixture is surfaced** unless `ALLOW_CHEMICAL_DETAILS=true` and the text is quoted verbatim from a reviewed source (default false). See `rules.md`.
 

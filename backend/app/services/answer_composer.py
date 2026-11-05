@@ -12,6 +12,7 @@ Enforces strict factual constraints:
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from ..schemas.evidence import Evidence
 
@@ -208,51 +209,93 @@ def compose_mandi_answer(
         no_rec = NO_RECORDS_MESSAGES.get(language, NO_RECORDS_MESSAGES["te-IN"])
         return f"{intro}{no_rec}".strip()
 
-    # Group evidence records by market, keeping the record with the latest arrival date for each market
-    market_groups: dict[str, Evidence] = {}
+    # Group evidence records by (market, variety) to prevent mixing varieties or overwriting distinct grades
+    groups: dict[tuple[str, str], Evidence] = {}
     for ev in evidence_list:
         mkt = ev.data.get("market") or "Unknown Market"
-        if mkt not in market_groups:
-            market_groups[mkt] = ev
+        var = ev.data.get("variety") or ev.data.get("grade") or "Standard"
+        key = (mkt, var)
+        if key not in groups:
+            groups[key] = ev
         else:
             # Pick latest by arrival_date
             curr_date = ev.data.get("arrival_date") or ""
-            prev_date = market_groups[mkt].data.get("arrival_date") or ""
+            prev_date = groups[key].data.get("arrival_date") or ""
             if curr_date > prev_date:
-                market_groups[mkt] = ev
+                groups[key] = ev
 
-    # Sort markets by arrival date descending
-    sorted_markets = sorted(
-        market_groups.values(),
+    # Sort groups by arrival date descending
+    sorted_groups = sorted(
+        groups.values(),
         key=lambda x: x.data.get("arrival_date") or "",
         reverse=True,
     )
 
-    selected = sorted_markets[:2]
+    selected = sorted_groups[:2]
     u_str = _format_unit_phrase(unit, language)
     caveat = CAVEATS.get(language, CAVEATS["te-IN"])
 
+    def _get_comm_label(data: dict[str, Any]) -> str:
+        base = data.get("commodity", requested_commodity or "పంట")
+        v = data.get("variety")
+        g = data.get("grade")
+        qualifier = ""
+        if v and v.lower() not in ("other", "none", "unknown", "local", "common"):
+            qualifier = v
+        elif g and g.lower() not in ("faq", "other", "none", "unknown", "grade a"):
+            qualifier = g
+        if qualifier and qualifier.lower() not in base.lower():
+            return f"{base} ({qualifier})"
+        return base
+
+    # State fallback prefix
+    state_prefix = ""
+    if any(ev.data.get("is_state_fallback") for ev in selected):
+        dist_name = requested_district or "ఈ"
+        if language == "te-IN":
+            state_prefix = f"{dist_name} జిల్లాలో రికార్డు లేదు. తెలంగాణ రాష్ట్ర స్థాయి సమాచారం ప్రకారం: "
+        elif language == "hi-IN":
+            state_prefix = f"{dist_name} जिले में रिकॉर्ड नहीं है। तेलंगाना राज्य स्तर की जानकारी के अनुसार: "
+        elif language == "hi-en":
+            state_prefix = f"{dist_name} district me record nahi mila. Telangana state-level info ke mutabiq: "
+        else:
+            state_prefix = f"No record found in {dist_name} district. Showing Telangana state-level prices: "
+
+    # Cached data note
+    cached_note = ""
+    if any(ev.data.get("cached") for ev in selected):
+        c_date = format_natural_date(selected[0].data.get("arrival_date"), language=language)
+        if language == "te-IN":
+            cached_note = f" (గమనిక: తాజా లైవ్ రికార్డు లభించనందున, {c_date} నాటి మునుపటి రికార్డు ప్రకారం)"
+        elif language == "hi-IN":
+            cached_note = f" (ध्यान दें: ताजा रिकॉर्ड न मिलने से, {c_date} के पिछले रिकॉर्ड अनुसार)"
+        elif language == "hi-en":
+            cached_note = f" (Note: Live record unavailable hone se, {c_date} ke record ke mutabiq)"
+        else:
+            cached_note = f" (Note: Latest live record unavailable; showing record from {c_date})"
+
     if len(selected) == 1:
         d1 = selected[0].data
-        comm = d1.get("commodity", requested_commodity or "పంట")
+        comm = _get_comm_label(d1)
         mkt1 = d1.get("market", "మార్కెట్")
         date1 = format_natural_date(d1.get("arrival_date"), language=language)
         p1_str = _format_price_val(d1.get("modal_price"), d1.get("min_price"), d1.get("max_price"), language)
         stale_note = STALENESS_WARNINGS.get(language, "") if _is_stale(d1.get("arrival_date")) else ""
 
         if language == "te-IN":
-            s1 = f"{mkt1} మార్కెట్లో {date1}న {comm} నివేదించిన మోడల్ ధర {p1_str}{u_str}{stale_note}."
+            s1 = f"{state_prefix}{mkt1} మార్కెట్లో {date1}న {comm} నివేదించిన మోడల్ ధర {p1_str}{u_str}{stale_note}{cached_note}."
         elif language == "hi-IN":
-            s1 = f"{mkt1} मंडी में {date1} को {comm} का दर्ज मॉडल मूल्य {p1_str}{u_str}{stale_note} है।"
+            s1 = f"{state_prefix}{mkt1} मंडी में {date1} को {comm} का दर्ज मॉडल मूल्य {p1_str}{u_str}{stale_note}{cached_note} है।"
         elif language == "hi-en":
-            s1 = f"{mkt1} mandi me {date1} ko {comm} ka reported modal price {p1_str}{u_str}{stale_note} hai."
+            s1 = f"{state_prefix}{mkt1} mandi me {date1} ko {comm} ka reported modal price {p1_str}{u_str}{stale_note}{cached_note} hai."
         else:
-            s1 = f"In {mkt1} market on {date1}, the reported modal price for {comm} was {p1_str}{u_str}{stale_note}."
+            s1 = f"{state_prefix}In {mkt1} market on {date1}, the reported modal price for {comm} was {p1_str}{u_str}{stale_note}{cached_note}."
 
     else:
         d1 = selected[0].data
         d2 = selected[1].data
-        comm = d1.get("commodity", requested_commodity or "పంట")
+        comm1 = _get_comm_label(d1)
+        comm2 = _get_comm_label(d2)
         mkt1 = d1.get("market", "మార్కెట్ 1")
         mkt2 = d2.get("market", "మార్కెట్ 2")
         date1 = format_natural_date(d1.get("arrival_date"), language=language)
@@ -273,13 +316,13 @@ def compose_mandi_answer(
             dist_label_en = f"{mkt1} and {mkt2}"
 
         if language == "te-IN":
-            s1 = f"{dist_label_te}లో {mkt1} మార్కెట్లో {date1}న {comm} మోడల్ ధర {p1_str}{u_str}, మరియు {mkt2} మార్కెట్లో {date2}న {p2_str}{u_str}గా నమోదైంది{stale_note}."
+            s1 = f"{state_prefix}{dist_label_te}లో {mkt1} మార్కెట్లో {date1}న {comm1} మోడల్ ధర {p1_str}{u_str}, మరియు {mkt2} మార్కెట్లో {date2}న {comm2} {p2_str}{u_str}గా నమోదైంది{stale_note}{cached_note}."
         elif language == "hi-IN":
-            s1 = f"{dist_label_hi} में {mkt1} मंडी में {date1} को {comm} का मॉडल भाव {p1_str}{u_str}, और {mkt2} मंडी में {date2} को {p2_str}{u_str} दर्ज हुआ{stale_note}।"
+            s1 = f"{state_prefix}{dist_label_hi} में {mkt1} मंडी में {date1} को {comm1} का मॉडल भाव {p1_str}{u_str}, और {mkt2} मंडी में {date2} को {comm2} का भाव {p2_str}{u_str} दर्ज हुआ{stale_note}{cached_note}।"
         elif language == "hi-en":
-            s1 = f"In {dist_label_en}, {comm} modal price was {p1_str}{u_str} in {mkt1} on {date1}, and {p2_str}{u_str} in {mkt2} on {date2}{stale_note}."
+            s1 = f"{state_prefix}In {dist_label_en}, {comm1} modal price was {p1_str}{u_str} in {mkt1} on {date1}, and {comm2} was {p2_str}{u_str} in {mkt2} on {date2}{stale_note}{cached_note}."
         else:
-            s1 = f"In {dist_label_en}, the modal price for {comm} was {p1_str}{u_str} in {mkt1} market on {date1}, and {p2_str}{u_str} in {mkt2} market on {date2}{stale_note}."
+            s1 = f"{state_prefix}In {dist_label_en}, reported modal price for {comm1} in {mkt1} on {date1} was {p1_str}{u_str}, and for {comm2} in {mkt2} on {date2} was {p2_str}{u_str}{stale_note}{cached_note}."
 
     reply = f"{intro}{s1} {caveat}".strip()
 

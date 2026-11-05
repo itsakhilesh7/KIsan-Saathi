@@ -9,6 +9,11 @@ Auth for all REST calls: header `X-API-Key-ID: <GNANI_API_KEY>`. Keys are genera
 - File field `audio_file`. Formats: WAV, MP3, OGG, FLAC, AAC, M4A. Sample rate 8 to 44.1 kHz. **Max 30 seconds.**
 - Form field `model`: add `prisma-v3.0` to use v3.0. **Prisma v2.5 is the default** when `model` is omitted.
 - Form field `language_code`: e.g. `hi-IN`, `te-IN`, `en-IN`; **`indic-auto` is Prisma v3.0 only**. Optional `format=transcribe` (e.g. numbers as digits) appears in the v3.0 example.
+- **Live STT Language Support & Hinglish Routing (Verified 2026-11-05):**
+  When passing `language_code: "hi-en"` to `POST https://api.vachana.ai/stt/v3`, the API returns HTTP 400:
+  `{"detail": "INVALID_LANGUAGE_CODE: Unsupported languages: hi-en. Supported languages: as-IN, bn-IN, en-IN, gu-IN, hi-IN, indic-auto, kn-IN, ml-IN, mr-IN, pa-IN, ta-IN, te-IN"}`
+  `hi-en` is NOT an accepted STT code on Prisma v3.0 (even though Timbre v2.5 TTS supports `hi-en`).
+  **Routing rule:** All outbound STT requests for Hinglish speech are routed to `hi-IN` (or `indic-auto`). Hinglish speech transcribes phonetically into Devanagari script (e.g. `"कल मेरे village में rain होने के chances क्या है?"`).
 - v3.0 response: `success`, `request_id`, `transcript`, `model`, `detected_language_code`, `processing_time`, `end_to_end_latency`. v2.5 response: `success`, `request_id`, `transcript`, `model`.
 - Our code sends `model` only when it is `prisma-v3.0`.
 

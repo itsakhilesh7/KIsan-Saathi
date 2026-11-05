@@ -45,5 +45,5 @@ def test_pilot_config_confirmed_flag():
     data = s.load_pilot_config()
     assert isinstance(data, dict)
     assert "confirmed" in data
-    # In initial scaffolding, confirmed is false
-    assert data["confirmed"] is False
+    # Pilot is now confirmed by developer for Warangal, Telangana
+    assert data["confirmed"] is True
