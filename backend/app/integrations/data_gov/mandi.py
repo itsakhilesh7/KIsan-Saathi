@@ -24,6 +24,11 @@ class MandiAPIError(Exception):
     """Raised when an operation on the data.gov.in Mandi API fails."""
 
 
+class MandiServiceUnavailableError(MandiAPIError):
+    """Raised when data.gov.in Mandi service is unavailable and no cached records exist."""
+
+
+
 def _parse_arrival_date(raw_date: str | None) -> str | None:
     """Parses date string from Agmarknet ('DD/MM/YYYY' or ISO) into ISO 'YYYY-MM-DD'."""
     if not raw_date or not isinstance(raw_date, str):
@@ -196,7 +201,7 @@ async def fetch_mandi_prices(
 
         if not raw_records:
             if api_failed:
-                raise MandiAPIError(f"Query to data.gov.in failed and no cached records exist for {filters}")
+                raise MandiServiceUnavailableError(f"Query to data.gov.in failed and no cached records exist for {filters}")
             log.info("Zero mandi records returned for filters: %s", filters)
             return []
 
@@ -252,11 +257,11 @@ async def fetch_mandi_prices(
         evidence_list.append(ev)
 
     # Save to local cache
-    try:
-        cache.save_evidence(evidence_list)
-    except Exception as ce:
-        log.warning("Failed to save evidence to mandi cache: %s", ce)
+    if active_cache:
+        try:
+            active_cache.save_evidence(evidence_list)
+        except Exception as ce:
+            log.warning("Failed to save evidence to mandi cache (%s): %s", type(ce).__name__, ce)
 
     return evidence_list
 
-    return evidence_list

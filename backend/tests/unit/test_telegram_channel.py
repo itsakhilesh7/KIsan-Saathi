@@ -301,4 +301,5 @@ async def test_telegram_voice_flow_unsupported_intent_blocked_default(tmp_path):
         assert not mock_llm.called
         assert mock_client.send_text.called
         # Contains the fixed Telugu guidance phrase
-        assert "మండి ధరల సమాచారం" in mock_client.send_text.call_args[0][1]
+        assert "మండి ధరల" in mock_client.send_text.call_args[0][1]
+

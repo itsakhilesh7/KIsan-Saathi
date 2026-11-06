@@ -4,6 +4,7 @@ Strictly controls tool selection:
 - Extracts IntentType and IntentSlots via rule-based matching + Pydantic validation
 - Merges multi-turn clarification slots from DialogueStateRepository (10-minute TTL)
 - Ensures LLM never selects tools or generates raw URLs
+- Script-free: all lexicon keywords and district maps imported from core.keywords
 """
 
 import json
@@ -13,69 +14,25 @@ from typing import Any
 
 from ..core.config import Settings, get_settings
 from ..core.http_client import get_http_client
+from ..core.keywords import (
+    BYE_KEYWORDS,
+    CAPABILITIES_KEYWORDS,
+    CHILLI_DRY_TOKENS,
+    CHILLI_GREEN_TOKENS,
+    CROP_ADVISORY_KEYWORDS,
+    GREETING_KEYWORDS,
+    KNOWN_DISTRICTS,
+    LOCATION_KEYWORDS,
+    OK_KEYWORDS,
+    PRICE_KEYWORDS,
+    THANKS_KEYWORDS,
+    WEATHER_KEYWORDS,
+)
 from ..integrations.data_gov.commodity_resolver import is_ambiguous_chilli, resolve_commodity
 from ..repositories.dialogue_state import DialogueStateRepository
 from ..schemas.intent import IntentSlots, IntentType, ParsedIntent
 
 log = logging.getLogger("services.intent")
-
-# Known Telangana districts seen in live data.gov.in Agmarknet data
-KNOWN_DISTRICTS: dict[str, str] = {
-    "warangal": "Warangal",
-    "వరంగల్": "Warangal",
-    "वारंगल": "Warangal",
-    "khammam": "Khammam",
-    "ఖమ్మం": "Khammam",
-    "खम्मम": "Khammam",
-    "hyderabad": "Hyderabad",
-    "హైదరాబాద్": "Hyderabad",
-    "हैदराबाद": "Hyderabad",
-    "adilabad": "Adilabad",
-    "ఆదిలాబాద్": "Adilabad",
-    "आदिलाबाद": "Adilabad",
-    "karimnagar": "Karimnagar",
-    "కరీంనగర్": "Karimnagar",
-    "करीमनगर": "Karimnagar",
-    "nalgonda": "Nalgonda",
-    "నల్గొండ": "Nalgonda",
-    "नलगोंडा": "Nalgonda",
-    "siddipet": "Siddipet",
-    "సిద్దిపేట": "Siddipet",
-    "mahbubnagar": "Mahbubnagar",
-    "మహబూబ్‌నగర్": "Mahbubnagar",
-    "nirmal": "Nirmal",
-    "నిర్మల్": "Nirmal",
-}
-
-GREETING_KEYWORDS = {
-    "hello", "hi", "hey", "namaste", "namaskaram",
-    "నమస్కారం", "నమస్తే", "బాగున్నారా", "హలో",
-    "नमस्ते", "प्रणाम", "राम राम",
-}
-
-PRICE_KEYWORDS = {
-    "ధర", "రేటు", "ధరలు", "రేట్లు", "మండి", "మార్కెట్",
-    "भाव", "दाम", "कीमत", "मंडी", "रेट",
-    "price", "rate", "mandi", "cost", "market",
-}
-
-WEATHER_KEYWORDS = {
-    # Telugu
-    "వర్షం", "వాన", "వాతావరణం", "ఎండ", "చలి", "ఉష్ణోగ్రత", "తుఫాను", "గాలివాన", "వర్షాలు", "నీళ్లు పెట్టాలా",
-    # Hindi
-    "बारिश", "मौसम", "तापमान", "बरसात", "धूप", "सर्दी", "हवा", "तूफान", "वर्षा", "सिंचाई", "रेन", "इरीगेशन",
-    # English / Hinglish
-    "weather", "rain", "rainfall", "forecast", "temperature", "mausam", "barish", "barsat", "irrigation",
-}
-
-CROP_ADVISORY_KEYWORDS = {
-    # Telugu
-    "పంట", "ఆకులు", "తెగులు", "పురుగు", "మచ్చలు", "సలహా", "పసుపు", "ముడత", "ఎండిపోవడం", "సస్యరక్షణ",
-    # Hindi / Hinglish Devanagari
-    "फसल", "पत्ते", "रोग", "कीड़ा", "कीड़े", "धब्बे", "बीमारी", "सलाह", "कर्ल", "प्लांट", "पीले", "सूख",
-    # English / Hinglish Latin
-    "crop", "disease", "pest", "symptom", "leaves", "leaf", "curl", "spots", "yellowing", "advisory", "plant",
-}
 
 # Unicode regex patterns for script detection
 TELUGU_RANGE_REGEX = re.compile(r"[\u0c00-\u0c7f]")
@@ -131,10 +88,58 @@ def extract_intent(
 ) -> ParsedIntent:
     """Extracts user intent and slots, resolving against dialogue state if clarification pending."""
     clean_text = text.strip()
-
-    # Check for greeting first: ONLY when message is short (<= 4 words) and has no other query/content
     words = [w for w in re.split(r"[\s,?!.]+", clean_text) if w]
-    has_greeting_kw = any(k in clean_text.lower() for k in GREETING_KEYWORDS)
+    lower_text = clean_text.lower()
+
+    # Check active dialogue state for this user (10-minute TTL)
+    previous_state: dict[str, Any] | None = None
+    if user_hash and dialogue_repo:
+        previous_state = dialogue_repo.get_state(user_hash, ttl_seconds=600)
+
+    # 1. Small talk: Thanks, OK, Bye
+    if any(k in lower_text for k in THANKS_KEYWORDS):
+        if user_hash and dialogue_repo:
+            dialogue_repo.clear_state(user_hash)
+        return ParsedIntent(
+            intent=IntentType.SMALL_TALK,
+            language=language,
+            small_talk_type="thanks",
+        )
+
+    if any(k == lower_text or k in words for k in OK_KEYWORDS) and len(words) <= 3:
+        if user_hash and dialogue_repo:
+            dialogue_repo.clear_state(user_hash)
+        return ParsedIntent(
+            intent=IntentType.SMALL_TALK,
+            language=language,
+            small_talk_type="ok",
+        )
+
+    if any(k == lower_text or k in words for k in BYE_KEYWORDS) and len(words) <= 3:
+        if user_hash and dialogue_repo:
+            dialogue_repo.clear_state(user_hash)
+        return ParsedIntent(
+            intent=IntentType.SMALL_TALK,
+            language=language,
+            small_talk_type="bye",
+        )
+
+    # 2. Capabilities query ("what can you do")
+    if any(k in lower_text for k in CAPABILITIES_KEYWORDS):
+        return ParsedIntent(
+            intent=IntentType.CAPABILITIES_QUERY,
+            language=language,
+        )
+
+    # 3. Location query ("what's my location?")
+    if any(k in lower_text for k in LOCATION_KEYWORDS):
+        return ParsedIntent(
+            intent=IntentType.LOCATION_QUERY,
+            language=language,
+        )
+
+    # 4. Greeting: ONLY when message is short (<= 4 words) and has no other query/content
+    has_greeting_kw = any(k in lower_text for k in GREETING_KEYWORDS)
     has_price_kw = any(p in clean_text for p in PRICE_KEYWORDS)
 
     if has_greeting_kw and len(words) <= 4 and not has_price_kw:
@@ -149,38 +154,30 @@ def extract_intent(
                 clarification_needed=False,
             )
 
-    # Check active dialogue state for this user (10-minute TTL)
-    previous_state: dict[str, Any] | None = None
-    if user_hash and dialogue_repo:
-        previous_state = dialogue_repo.get_state(user_hash, ttl_seconds=600)
-
-    # Check for ambiguous chilli query or chilli disambiguation follow-up from previous state
+    # 5. Check for ambiguous chilli query or chilli disambiguation follow-up from previous state
     clarification_type: str | None = None
     matched_commodity: str | None = None
 
     if previous_state and previous_state.get("clarification_type") == "chilli_type":
-        lower = clean_text.lower()
-        if any(g in lower for g in ["పచ్చి", "green", "hari", "1"]):
+        if any(g in lower_text for g in CHILLI_GREEN_TOKENS):
             matched_commodity = "Green Chilli"
-        elif any(d in lower for d in ["ఎండు", "ఎర్ర", "dry", "red", "sukhi", "lal", "2"]):
+        elif any(d in lower_text for d in CHILLI_DRY_TOKENS):
             matched_commodity = "Dry Chillies"
         else:
             clarification_type = "chilli_type"
     elif is_ambiguous_chilli(clean_text):
-        lower = clean_text.lower()
-        if any(g in lower for g in ["పచ్చి", "green", "hari"]):
+        if any(g in lower_text for g in CHILLI_GREEN_TOKENS):
             matched_commodity = "Green Chilli"
-        elif any(d in lower for d in ["ఎండు", "ఎర్ర", "dry", "red", "sukhi", "lal"]):
+        elif any(d in lower_text for d in CHILLI_DRY_TOKENS):
             matched_commodity = "Dry Chillies"
         else:
             clarification_type = "chilli_type"
 
-    # Check for weather query if not in an active mandi dialogue follow-up
-    # Checks token equality or longer phrase inclusion to avoid substring collision (e.g. 'ఎండ' in 'ఎండు')
+    # 6. Check for weather query if not in an active chilli or mandi follow-up
     is_weather = False
-    if not (previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY):
+    if not (previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY and previous_state.get("clarification_type") == "chilli_type"):
         for kw in WEATHER_KEYWORDS:
-            if kw in words or (len(kw) > 4 and kw in clean_text.lower()):
+            if kw in words or (len(kw) > 4 and kw in lower_text):
                 is_weather = True
                 break
 
@@ -197,7 +194,7 @@ def extract_intent(
             clarification_needed=False,
         )
 
-    # Attempt standard commodity resolution if not already resolved as chilli
+    # 7. Standard commodity resolution if not already resolved as chilli
     if not matched_commodity and not clarification_type:
         for token in re.split(r"[\s,?!.]+", clean_text):
             if token:
@@ -209,10 +206,10 @@ def extract_intent(
         if not matched_commodity:
             matched_commodity = resolve_commodity(clean_text)
 
-    # Attempt district extraction
+    # 8. District extraction
     matched_district = _match_district(clean_text)
 
-    # If previous clarification was active, merge slots
+    # 9. Multi-turn dialogue slot merging
     if previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY:
         prev_slots = previous_state.get("slots", {})
         if not matched_commodity and prev_slots.get("commodity"):
@@ -220,17 +217,28 @@ def extract_intent(
         if not matched_district and prev_slots.get("district"):
             matched_district = prev_slots["district"]
 
-    # Determine if this is a mandi query: requires a price keyword, chilli mention, or active mandi dialogue state
+    # Check for crop advisory keywords
+    has_crop_kw = any(ck in lower_text for ck in CROP_ADVISORY_KEYWORDS)
+
+    # 10. Standalone short commodity query (Item C.2):
+    # If message is short (<= 3 words) and is ONLY a known commodity name (not crop problem/advisory),
+    # it is a mandi price query for pilot district Warangal
+    is_standalone_commodity = False
+    if matched_commodity and len(words) <= 3 and not has_price_kw and not clarification_type and not has_crop_kw:
+        is_standalone_commodity = True
+
+    # 11. Determine if this is a mandi query
     is_mandi = (
-        any(p in clean_text for p in PRICE_KEYWORDS)
+        has_price_kw
         or is_ambiguous_chilli(clean_text)
+        or is_standalone_commodity
         or (previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY)
     )
 
     if not is_mandi:
-        # Check for crop advisory query (enabled when crop advisory retrieval corpus is wired)
-        has_crop_kw = any(ck in clean_text.lower() for ck in CROP_ADVISORY_KEYWORDS)
+        # Check for crop advisory query
         if has_crop_kw and enable_crop_advisory:
+
             resolved_crop = matched_commodity
             if not resolved_crop:
                 for token in re.split(r"[\s,?!.]+", clean_text):
@@ -260,6 +268,13 @@ def extract_intent(
             clarification_needed=False,
         )
 
+    # When district is not explicitly stated in a standalone query or query without district,
+    # assume pilot district Warangal (Item C.2)
+    is_assumed_district = False
+    if not matched_district and matched_commodity and not clarification_type:
+        matched_district = "Warangal"
+        is_assumed_district = True
+
     slots = IntentSlots(
         commodity=matched_commodity,
         district=matched_district,
@@ -280,7 +295,8 @@ def extract_intent(
                 "intent": IntentType.MANDI_PRICE_QUERY,
                 "slots": slots.model_dump(),
                 "missing": missing,
-                "clarification_type": clarification_type,
+                "clarification_type": clarification_type or "missing_commodity",
+                "pending_slot": "commodity",
             },
         )
     elif not clarification_needed and user_hash and dialogue_repo:
@@ -294,6 +310,7 @@ def extract_intent(
         missing_required_slots=missing,
         clarification_needed=clarification_needed,
         clarification_type=clarification_type,
+        is_assumed_district=is_assumed_district,
     )
 
 
@@ -349,62 +366,49 @@ async def classify_intent_with_llm_fallback(
             "temperature": 0.0,
             "max_tokens": 150,
         }
-        try:
-            resp = await client.post(url, headers=headers, json=payload, timeout=10.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"].strip()
-                # Strip markdown blocks if returned
-                if content.startswith("```"):
-                    content = re.sub(r"^```(?:json)?\s*", "", content)
-                    content = re.sub(r"\s*```$", "", content)
-                return json.loads(content)
-        except Exception as e:
-            log.warning("LLM intent classification attempt failed: %s", e)
+        for _ in range(2):
+            try:
+                resp = await client.post(url, json=payload, headers=headers, timeout=20.0)
+                if resp.status_code == 200:
+                    raw_json = resp.json()["choices"][0]["message"]["content"]
+                    parsed = json.loads(raw_json)
+                    if "intent" in parsed:
+                        return parsed
+            except Exception as e:
+                log.warning("LLM intent classification attempt failed: %s", e)
         return None
 
-    # First attempt
-    res = await _call_llm_for_json(text)
+    parsed_json = await _call_llm_for_json(text)
+    if not parsed_json or "intent" not in parsed_json:
+        return rule_parsed, None
 
-    # One retry if JSON parsing or request failed
-    if res is None:
-        log.info("Retrying LLM intent classification once...")
-        res = await _call_llm_for_json(f"Return valid JSON only. User query: {text}")
+    raw_intent = str(parsed_json.get("intent", "")).lower()
+    intent_map = {
+        "mandi_price_query": IntentType.MANDI_PRICE_QUERY,
+        "weather_query": IntentType.WEATHER_QUERY,
+        "crop_advisory_query": IntentType.CROP_ADVISORY_QUERY,
+        "greeting_or_help": IntentType.GREETING_OR_HELP,
+    }
+    resolved_intent = intent_map.get(raw_intent, IntentType.UNSUPPORTED_OR_UNCLEAR)
 
-    if not res or not isinstance(res, dict):
-        return ParsedIntent(intent=IntentType.UNSUPPORTED_OR_UNCLEAR, language=language), disclosed_name
+    slots_dict = parsed_json.get("slots", {}) or {}
+    matched_crop = resolve_commodity(slots_dict.get("commodity") or "")
+    matched_district = _match_district(slots_dict.get("district") or "")
 
-    try:
-        raw_intent_str = res.get("intent", "")
-        intent_type = IntentType(raw_intent_str)
-        raw_slots = res.get("slots", {}) or {}
+    slots = IntentSlots(
+        commodity=matched_crop,
+        crop=matched_crop,
+        district=matched_district,
+        state=slots_dict.get("state") or "Telangana",
+    )
 
-        # Canonicalize commodity using commodity_resolver to prevent hallucinated crops
-        raw_comm = raw_slots.get("commodity")
-        canonical_comm = resolve_commodity(raw_comm) if raw_comm else None
-
-        raw_dist = raw_slots.get("district")
-        canonical_dist = _match_district(raw_dist) if raw_dist else _match_district(text)
-
-        slots = IntentSlots(
-            commodity=canonical_comm,
-            district=canonical_dist,
-            state="Telangana",
-        )
-
-        missing = []
-        if intent_type == IntentType.MANDI_PRICE_QUERY and not canonical_comm:
-            missing.append("commodity")
-
-        parsed = ParsedIntent(
-            intent=intent_type,
+    return (
+        ParsedIntent(
+            intent=resolved_intent,
             language=language,
             slots=slots,
-            missing_required_slots=missing,
-            clarification_needed=len(missing) > 0,
-        )
-        return parsed, disclosed_name
+            clarification_needed=False,
+        ),
+        disclosed_name,
+    )
 
-    except (ValueError, TypeError) as e:
-        log.warning("Pydantic validation failed for LLM intent '%s': %s", res, e)
-        return ParsedIntent(intent=IntentType.UNSUPPORTED_OR_UNCLEAR, language=language), disclosed_name

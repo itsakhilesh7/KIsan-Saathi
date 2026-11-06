@@ -58,3 +58,42 @@ def test_hinglish_evaluated_by_intent_and_slot_extraction():
     parsed02 = extract_intent(hing02_hyp, enable_crop_advisory=True)
     # Expected intent for HING-02 is crop_advisory_query
     assert parsed02.intent == "crop_advisory_query"
+
+
+def test_report_wer_mathematical_consistency():
+    """Verify that report_wer produces accurate tables directly computed from out/wer_results.csv."""
+    from backend.scripts.report_wer import generate_wer_tables
+
+    res = generate_wer_tables("out/wer_results.csv")
+    assert res["hinglish_count"] == 4
+
+    summary_data = res["summary_data"]
+    # Hindi explicit
+    assert ("Hindi", "explicit") in summary_data
+    count, m_wer, m_cer = summary_data[("Hindi", "explicit")]
+    assert count == 4
+    # Exact real values: (10.0 + 15.79 + 19.05 + 5.88) / 4 = 12.68%
+    assert 0.1260 <= m_wer <= 0.1275
+    assert 0.0615 <= m_cer <= 0.0625
+
+    # Hindi indic-auto
+    assert ("Hindi", "indic-auto") in summary_data
+    count, m_wer, m_cer = summary_data[("Hindi", "indic-auto")]
+    assert count == 4
+    # Exact real values: (5.0 + 10.53 + 19.05 + 5.88) / 4 = 10.12%
+    assert 0.1005 <= m_wer <= 0.1020
+
+    # Telugu explicit
+    assert ("Telugu", "explicit") in summary_data
+    count, m_wer, m_cer = summary_data[("Telugu", "explicit")]
+    assert count == 4
+    # Exact real values: (23.08 + 8.33 + 18.18 + 0.0) / 4 = 12.40%
+    assert 0.1230 <= m_wer <= 0.1250
+
+    # Telugu indic-auto
+    assert ("Telugu", "indic-auto") in summary_data
+    count, m_wer, m_cer = summary_data[("Telugu", "indic-auto")]
+    assert count == 4
+    # Exact real values: (30.77 + 8.33 + 18.18 + 0.0) / 4 = 14.32%
+    assert 0.1420 <= m_wer <= 0.1445
+

@@ -61,11 +61,11 @@ def test_detect_text_language_scripts():
 
 
 def test_format_natural_date():
-    """Verify ISO dates are formatted naturally per language (Item 6)."""
-    assert format_natural_date("2026-11-04", language="te-IN") == "4 నవంబర్"
-    assert format_natural_date("2026-11-04", language="hi-IN") == "4 नवंबर"
+    """Verify ISO dates are formatted naturally per language with postpositions (Phase 3D Section D)."""
+    assert format_natural_date("2026-11-04", language="te-IN") == "నవంబర్ 4న"
+    assert format_natural_date("2026-11-04", language="hi-IN") == "4 नवंबर को"
     assert format_natural_date("2026-11-04", language="en-IN") == "4 November"
-    assert format_natural_date("2026-11-04", language="hi-en") == "4 November"
+    assert format_natural_date("2026-11-04", language="hi-en") == "4 November ko"
 
 
 def test_mandi_composer_groups_up_to_two_markets():
@@ -109,7 +109,8 @@ def test_mandi_composer_groups_up_to_two_markets():
     assert "7250" in ans
     assert "Warangal APMC" in ans
     assert "Narsampet" in ans
-    assert "4 నవంబర్" in ans
+    assert "నవంబర్ 4న" in ans
+
 
 
 def test_mandi_composer_unit_setting():

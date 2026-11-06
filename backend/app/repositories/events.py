@@ -41,6 +41,10 @@ class EventRepository:
                     raw_detected_language TEXT,
                     timings_json TEXT,
                     model_name TEXT,
+                    intent TEXT,
+                    tool TEXT,
+                    error_type TEXT,
+                    audio_duration_seconds REAL,
                     status TEXT NOT NULL,
                     transcript TEXT,
                     reply TEXT,
@@ -48,11 +52,19 @@ class EventRepository:
                 )
                 """
             )
-            try:
-                conn.execute("ALTER TABLE events ADD COLUMN raw_detected_language TEXT")
-            except sqlite3.OperationalError:
-                pass
+            for col_def in (
+                "raw_detected_language TEXT",
+                "intent TEXT",
+                "tool TEXT",
+                "error_type TEXT",
+                "audio_duration_seconds REAL",
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE events ADD COLUMN {col_def}")
+                except sqlite3.OperationalError:
+                    pass
             conn.commit()
+
 
     def get_recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
         """Returns the most recent events from SQLite for inspection and testing."""
@@ -73,6 +85,12 @@ class EventRepository:
         raw_lang = event_data.get("raw_detected_language")
         timings = json.dumps(event_data.get("timings", {}))
         model = event_data.get("model_name")
+        intent = event_data.get("intent")
+        tool = event_data.get("tool")
+        error_type = event_data.get("error_type")
+        audio_duration = event_data.get("audio_duration_seconds")
+        if audio_duration is None and "duration" in event_data:
+            audio_duration = event_data.get("duration")
         status = event_data.get("status", "ok")
         transcript = event_data.get("transcript")
         reply = event_data.get("reply")
@@ -85,14 +103,19 @@ class EventRepository:
                         """
                         INSERT INTO events (
                             request_id, user_hash, channel, detected_language,
-                            raw_detected_language, timings_json, model_name, status, transcript, reply
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            raw_detected_language, timings_json, model_name, intent,
+                            tool, error_type, audio_duration_seconds, status, transcript, reply
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (req_id, user_hash, channel, lang, raw_lang, timings, model, status, transcript, reply),
+                        (
+                            req_id, user_hash, channel, lang, raw_lang, timings,
+                            model, intent, tool, error_type, audio_duration, status, transcript, reply
+                        ),
                     )
                     conn.commit()
             except Exception as e:
                 log.error("Failed to append event to SQLite: %s", e)
+
 
             # 2. JSONL append
             try:

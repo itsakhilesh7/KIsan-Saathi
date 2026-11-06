@@ -3,6 +3,7 @@
 Coordinates: WhatsApp media in -> Audio normalize -> Gnani Prisma STT
 -> LLM reasoning -> Gnani Timbre TTS -> WhatsApp voice out.
 Logs per-stage latency and events without blocking async event loops.
+All user-visible prompts are strictly resolved from core.messages.
 """
 
 import asyncio
@@ -15,8 +16,9 @@ from typing import Any
 from ..channels.base import ChannelClient, WhatsAppChannelClient
 from ..core.config import Settings, get_settings
 from ..core.logging import get_request_id, hash_phone
+from ..core.messages import get_message, to_speech_text
 from ..core.security import validate_media_type
-from ..integrations.data_gov.mandi import fetch_mandi_prices
+from ..integrations.data_gov.mandi import MandiServiceUnavailableError, fetch_mandi_prices
 from ..integrations.gnani import stt as gnani_stt
 from ..integrations.gnani import tts as gnani_tts
 from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
@@ -27,7 +29,6 @@ from ..repositories.user_preferences import SQLiteUserPreferencesRepository
 from ..schemas.intent import IntentType
 from . import audio_service
 from .answer_composer import (
-    UNSUPPORTED_INTENT_MESSAGES,
     compose_clarification_reply,
     compose_mandi_answer,
     compose_weather_answer,
@@ -35,35 +36,6 @@ from .answer_composer import (
 from .intent_service import classify_intent_with_llm_fallback, detect_text_language
 
 log = logging.getLogger("orchestrator")
-
-# Language-aware messages across all 4 supported/tested languages
-EMPTY_TRANSCRIPT_MESSAGES: dict[str, str] = {
-    "te-IN": "క్షమించండి, మీ వాయిస్ స్పష్టంగా వినబడలేదు. దయచేసి మళ్లీ చెప్పండి.",
-    "hi-IN": "माफ़ कीजिए, आवाज़ साफ़ नहीं आई। कृपया दोबारा बोलिए।",
-    "en-IN": "Sorry, I could not hear that clearly. Please try speaking again.",
-    "hi-en": "Sorry, aapki aawaz clear nahi aayi. Please dobara boliye.",
-}
-
-FALLBACK_MESSAGES: dict[str, str] = {
-    "te-IN": "క్షమించండి, ఇప్పుడు సమాధానం ఇవ్వడంలో సమస్య ఉంది. దయచేసి కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించండి లేదా 1551 కి కాల్ చేయండి.",
-    "hi-IN": "माफ़ कीजिए, अभी जवाब देने में दिक्कत हो रही है। कृपया थोड़ी देर बाद फिर कोशिश करें या 1551 पर कॉल करें।",
-    "en-IN": "Sorry, I am having trouble answering right now. Please try again in a little while or call 1551.",
-    "hi-en": "Sorry, abhi answer dene me issue ho raha hai. Please thodi der baad dobara try karein ya 1551 par call karein.",
-}
-
-AUDIO_TOO_LONG_MESSAGES: dict[str, str] = {
-    "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 60 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.",
-    "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम 60 सेकंड)। कृपया छोटा संदेश भेजें।",
-    "en-IN": "Voice note is too long (maximum 60 seconds). Please send a shorter audio message.",
-    "hi-en": "Voice note zyada lamba hai (limit 60 seconds). Please chhota audio message bhejein.",
-}
-
-UNSUPPORTED_MEDIA_MESSAGES: dict[str, str] = {
-    "te-IN": "సహాయం కోసం దయచేసి వాయిస్ సందేశం లేదా టెక్స్ట్ మెసేజ్ పంపండి.",
-    "hi-IN": "सहायता के लिए कृपया वॉयस संदेश या टेक्स्ट मैसेज भेजें।",
-    "en-IN": "Please send a voice note or a text message for assistance.",
-    "hi-en": "Help ke liye please audio voice note ya text message bhejein.",
-}
 
 _event_repo: EventRepository | None = None
 _user_pref_repo: SQLiteUserPreferencesRepository | None = None
@@ -119,7 +91,8 @@ def _resolve_user_language(user_hash: str, explicit_lang: str | None, settings: 
     stored = get_user_pref_repo().get_language(user_hash)
     if stored:
         return stored
-    return settings.pilot_primary_language
+    return getattr(settings, "PILOT_PRIMARY_LANGUAGE", None) or getattr(settings, "STT_LANGUAGE", "te-IN")
+
 
 
 async def handle_voice_message(
@@ -127,27 +100,19 @@ async def handle_voice_message(
     settings: Settings,
     client: ChannelClient | None = None,
 ) -> None:
-    """Orchestrates end-to-end voice note pipeline with per-stage timing."""
+    """Pipeline: WhatsApp media in -> 16kHz WAV -> Prisma STT -> compose grounded answer -> Timbre TTS -> voice out."""
     channel = client or WhatsAppChannelClient(settings=settings)
-    timings: dict[str, float] = {}
-    start_total = time.perf_counter()
-    detected_lang: str | None = None
-    sender_phone = msg.get("from") or ""
+    media_id = msg.get("media_id", "")
+    mime_type = msg.get("mime_type", "")
+    sender_phone = msg.get("from", "")
     phone_hash = hash_phone(sender_phone, settings.PHONE_HASH_SALT)
-    media_id = msg.get("media_id")
-    mime_type = msg.get("mime_type")
     req_id = get_request_id()
 
-    if not media_id or not sender_phone:
-        log.warning("Voice message missing media_id or sender phone")
-        return
-
-    # Audio limit check 1: Validate media type if provided in webhook metadata
-    if mime_type and not validate_media_type(mime_type):
-        log.warning("Rejected unsupported media MIME type '%s' from user=%s", mime_type, phone_hash)
+    # Pre-validation check 1: Media MIME type
+    if not validate_media_type(mime_type):
+        log.warning("Rejected unsupported media MIME type '%s' for user=%s", mime_type, phone_hash)
         fallback_lang = _resolve_user_language(phone_hash, None, settings)
-        unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(fallback_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
-        await channel.send_text(sender_phone, unsupported_msg)
+        await channel.send_text(sender_phone, get_message("unsupported_media", fallback_lang))
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
@@ -156,6 +121,11 @@ async def handle_voice_message(
         })
         return
 
+    timings: dict[str, float] = {}
+    start_total = time.perf_counter()
+    parsed = None
+    disclosed_model = None
+
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
             in_ogg = os.path.join(tmp_dir, "in.ogg")
@@ -163,7 +133,7 @@ async def handle_voice_message(
             out_wav = os.path.join(tmp_dir, "out.wav")
             out_ogg = os.path.join(tmp_dir, "out.ogg")
 
-            # Stage 1: Download & convert incoming audio (enforces AUDIO_MAX_MB)
+            # Stage 1: Download & convert incoming audio
             s = time.perf_counter()
             audio_bytes = await channel.download_media(media_id)
             with open(in_ogg, "wb") as f:
@@ -172,18 +142,34 @@ async def handle_voice_message(
             await asyncio.to_thread(audio_service.to_wav16k, in_ogg, in_wav)
             timings["download_convert"] = round(time.perf_counter() - s, 2)
 
-            # Audio limit check 2: Validate duration before calling STT (enforces AUDIO_MAX_SECONDS)
+            # Audio limit check 2: Validate duration before calling STT
             duration = await asyncio.to_thread(audio_service.get_duration, in_wav)
+            fallback_lang = _resolve_user_language(phone_hash, None, settings)
+
             if duration > settings.AUDIO_MAX_SECONDS:
                 log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, settings.AUDIO_MAX_SECONDS, phone_hash)
-                fallback_lang = _resolve_user_language(phone_hash, None, settings)
-                too_long_msg = AUDIO_TOO_LONG_MESSAGES.get(fallback_lang, AUDIO_TOO_LONG_MESSAGES["te-IN"])
+                too_long_msg = get_message("audio_too_long", fallback_lang)
                 await channel.send_text(sender_phone, too_long_msg)
                 await get_event_repo().log_event({
                     "request_id": req_id,
                     "user_hash": phone_hash,
                     "channel": channel.channel_name,
                     "status": "rejected_duration",
+                    "duration": duration,
+                    "timings": timings,
+                })
+                return
+
+            if duration < 1.0:
+                log.info("Voice note duration (%.2fs) < 1.0s, returning empty_transcript message", duration)
+                too_short_msg = get_message("empty_transcript", fallback_lang)
+                await channel.send_text(sender_phone, too_short_msg)
+                await get_event_repo().log_event({
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "channel": channel.channel_name,
+                    "status": "audio_too_short",
+                    "duration": duration,
                     "timings": timings,
                 })
                 return
@@ -204,7 +190,7 @@ async def handle_voice_message(
 
             if not transcript:
                 log.info("Empty transcript returned for user=%s", phone_hash)
-                clarification = EMPTY_TRANSCRIPT_MESSAGES.get(detected_lang, EMPTY_TRANSCRIPT_MESSAGES["te-IN"])
+                clarification = get_message("empty_transcript", detected_lang)
                 await channel.send_text(sender_phone, clarification)
                 await get_event_repo().log_event({
                     "request_id": req_id,
@@ -235,22 +221,27 @@ async def handle_voice_message(
                     )
                     disclosed_model = "grounded/dialogue_clarification"
                 else:
-                    evidence = await fetch_mandi_prices(
-                        commodity=parsed.slots.commodity,
-                        district=parsed.slots.district,
-                        state=parsed.slots.state or "Telangana",
-                        settings=settings,
-                    )
-                    reply_text = compose_mandi_answer(
-                        evidence,
-                        language=detected_lang,
-                        is_first_turn=is_first_turn,
-                        requested_district=parsed.slots.district,
-                        requested_commodity=parsed.slots.commodity,
-                        requested_state=parsed.slots.state or "Telangana",
-                        unit=settings.MANDI_PRICE_UNIT,
-                    )
-                    disclosed_model = "grounded/agmarknet_mandi"
+                    try:
+                        evidence = await fetch_mandi_prices(
+                            commodity=parsed.slots.commodity,
+                            district=parsed.slots.district,
+                            state=parsed.slots.state or "Telangana",
+                            settings=settings,
+                        )
+                        reply_text = compose_mandi_answer(
+                            evidence,
+                            language=detected_lang,
+                            is_first_turn=is_first_turn,
+                            requested_district=parsed.slots.district,
+                            requested_commodity=parsed.slots.commodity,
+                            requested_state=parsed.slots.state or "Telangana",
+                            unit=settings.MANDI_PRICE_UNIT,
+                            is_assumed_district=parsed.is_assumed_district,
+                        )
+                        disclosed_model = "grounded/agmarknet_mandi"
+                    except MandiServiceUnavailableError:
+                        reply_text = get_message("mandi_service_unavailable", detected_lang)
+                        disclosed_model = "system/mandi_service_unavailable"
             elif parsed.intent == IntentType.WEATHER_QUERY:
                 target_dist = parsed.slots.district or "Warangal"
                 weather_ev = await fetch_weather_forecast(
@@ -266,37 +257,55 @@ async def handle_voice_message(
                 )
                 disclosed_model = "grounded/open_meteo_weather"
             elif parsed.intent == IntentType.GREETING_OR_HELP:
-                if is_first_turn:
-                    greetings = {
-                        "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరల సమాచారం గురించి అడగవచ్చు.",
-                        "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव की जानकारी पूछ सकते हैं।",
-                        "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices.",
-                        "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices pooch sakte hain.",
-                    }
-                else:
-                    greetings = {
-                        "te-IN": "నమస్కారం! మీరు ఏ పంట మండి ధర తెలుసుకోవాలనుకుంటున్నారు?",
-                        "hi-IN": "नमस्ते! आप किस फसल का मंडी भाव जानना चाहते हैं?",
-                        "en-IN": "Hello! Which crop's mandi price would you like to know?",
-                        "hi-en": "Namaste! Aap kis crop ka mandi price jaanna chahte hain?",
-                    }
-                reply_text = greetings.get(detected_lang, greetings["te-IN"])
+                greeting_key = "greeting_first_turn" if is_first_turn else "greeting_repeat"
+                reply_text = get_message(greeting_key, detected_lang)
                 disclosed_model = "rule_based/greeting"
+                get_dialogue_repo().set_state(
+                    phone_hash,
+                    {
+                        "intent": IntentType.MANDI_PRICE_QUERY,
+                        "pending_slot": "commodity",
+                        "clarification_type": "missing_commodity",
+                    },
+                )
+            elif parsed.intent == IntentType.SMALL_TALK:
+                st_key = f"small_talk_{parsed.small_talk_type or 'ok'}"
+                reply_text = get_message(st_key, detected_lang)
+                disclosed_model = f"rule_based/{st_key}"
+            elif parsed.intent == IntentType.CAPABILITIES_QUERY:
+                reply_text = get_message("capabilities_query", detected_lang)
+                disclosed_model = "rule_based/capabilities"
+                get_dialogue_repo().set_state(
+                    phone_hash,
+                    {
+                        "intent": IntentType.MANDI_PRICE_QUERY,
+                        "pending_slot": "commodity",
+                        "clarification_type": "missing_commodity",
+                    },
+                )
+            elif parsed.intent == IntentType.LOCATION_QUERY:
+                reply_text = get_message("location_query", detected_lang)
+                disclosed_model = "rule_based/location"
             else:
                 if settings.ECHO_UNSUPPORTED:
                     llm_adapter = OpenAICompatibleLLM(settings=settings)
                     reply_text, disclosed_model = await llm_adapter.answer(transcript, lang=detected_lang)
                 else:
-                    reply_text = UNSUPPORTED_INTENT_MESSAGES.get(detected_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
+                    reply_text = get_message("unsupported_intent", detected_lang)
                     disclosed_model = llm_disclosed or "rule_based/unsupported_intent"
 
             timings["llm"] = round(time.perf_counter() - s, 2)
 
-            # Stage 4: Timbre Text-to-Speech
+            # Stage 4: Timbre Text-to-Speech (translates technical tokens & latin locations to native script)
             s = time.perf_counter()
-            wav_bytes = await gnani_tts.synthesize(reply_text, language=detected_lang, settings=settings)
+            speech_text = to_speech_text(reply_text, language=detected_lang)
+            wav_bytes = await gnani_tts.synthesize(speech_text, language=detected_lang, settings=settings)
             with open(out_wav, "wb") as f:
                 f.write(wav_bytes)
+
+            out_audio_duration = await asyncio.to_thread(audio_service.get_duration, out_wav)
+            timings["tts_duration_seconds"] = round(out_audio_duration, 2)
+            log.info("Synthesized reply audio duration: %.2fs", out_audio_duration)
 
             await asyncio.to_thread(audio_service.wav_to_ogg_opus, out_wav, out_ogg)
             timings["tts_convert"] = round(time.perf_counter() - s, 2)
@@ -323,33 +332,36 @@ async def handle_voice_message(
             "detected_language": detected_lang,
             "raw_detected_language": raw_detected_lang,
             "model_name": disclosed_model,
+            "intent": parsed.intent.value if parsed else None,
+            "tool": disclosed_model,
+            "audio_duration_seconds": round(out_audio_duration, 2) if "out_audio_duration" in locals() else None,
             "timings": timings,
             "status": "ok",
             "transcript": transcript if settings.STORE_RAW_TRANSCRIPTS else None,
             "reply": reply_text if settings.STORE_RAW_TRANSCRIPTS else None,
         })
-
     except Exception as e:
-        log.exception(
-            "Voice message processing failed: %s",
-            e,
-            extra={"request_id": req_id, "user_hash": phone_hash},
-        )
-        err_lang = _resolve_user_language(phone_hash, detected_lang, settings)
-        fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
-        try:
-            await channel.send_text(sender_phone, fallback_msg)
-        except Exception:
-            log.exception("Failed to deliver fallback error message to user")
+        log.exception("Voice pipeline processing failed: %s", e)
+        err_lang = _resolve_user_language(phone_hash, None, settings)
+        if isinstance(e, MandiServiceUnavailableError):
+            fallback_msg = get_message("mandi_service_unavailable", err_lang)
+        else:
+            fallback_msg = get_message("fallback_1551", err_lang)
 
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": channel.channel_name,
-            "detected_language": detected_lang,
             "status": "error",
+            "error_type": type(e).__name__,
+            "intent": parsed.intent.value if parsed else None,
+            "tool": disclosed_model if disclosed_model else None,
             "timings": timings,
         })
+        try:
+            await channel.send_text(sender_phone, fallback_msg)
+        except Exception:
+            log.exception("Failed to deliver fallback notification")
 
 
 async def handle_text_message(
@@ -357,15 +369,14 @@ async def handle_text_message(
     settings: Settings,
     client: ChannelClient | None = None,
 ) -> None:
-    """Processes inbound text message query."""
+    """Processes incoming text messages using strict intent extraction and grounded answering."""
     channel = client or WhatsAppChannelClient(settings=settings)
-    sender_phone = msg.get("from") or ""
+    sender_phone = msg.get("from", "")
+    text = msg.get("text", "").strip()
     phone_hash = hash_phone(sender_phone, settings.PHONE_HASH_SALT)
-    text = msg.get("text", "")
     req_id = get_request_id()
-
-    if not text or not sender_phone:
-        return
+    parsed = None
+    disclosed_model = None
 
     try:
         is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
@@ -390,22 +401,27 @@ async def handle_text_message(
                 )
                 disclosed_model = "grounded/dialogue_clarification"
             else:
-                evidence = await fetch_mandi_prices(
-                    commodity=parsed.slots.commodity,
-                    district=parsed.slots.district,
-                    state=parsed.slots.state or "Telangana",
-                    settings=settings,
-                )
-                reply = compose_mandi_answer(
-                    evidence,
-                    language=user_lang,
-                    is_first_turn=is_first_turn,
-                    requested_district=parsed.slots.district,
-                    requested_commodity=parsed.slots.commodity,
-                    requested_state=parsed.slots.state or "Telangana",
-                    unit=settings.MANDI_PRICE_UNIT,
-                )
-                disclosed_model = "grounded/agmarknet_mandi"
+                try:
+                    evidence = await fetch_mandi_prices(
+                        commodity=parsed.slots.commodity,
+                        district=parsed.slots.district,
+                        state=parsed.slots.state or "Telangana",
+                        settings=settings,
+                    )
+                    reply = compose_mandi_answer(
+                        evidence,
+                        language=user_lang,
+                        is_first_turn=is_first_turn,
+                        requested_district=parsed.slots.district,
+                        requested_commodity=parsed.slots.commodity,
+                        requested_state=parsed.slots.state or "Telangana",
+                        unit=settings.MANDI_PRICE_UNIT,
+                        is_assumed_district=parsed.is_assumed_district,
+                    )
+                    disclosed_model = "grounded/agmarknet_mandi"
+                except MandiServiceUnavailableError:
+                    reply = get_message("mandi_service_unavailable", user_lang)
+                    disclosed_model = "system/mandi_service_unavailable"
         elif parsed.intent == IntentType.WEATHER_QUERY:
             target_dist = parsed.slots.district or "Warangal"
             weather_ev = await fetch_weather_forecast(
@@ -421,28 +437,41 @@ async def handle_text_message(
             )
             disclosed_model = "grounded/open_meteo_weather"
         elif parsed.intent == IntentType.GREETING_OR_HELP:
-            if is_first_turn:
-                greetings = {
-                    "te-IN": "నమస్కారం! నేను కిసాన్ సాథీ AI సహాయకుడిని. మీరు నన్ను పంటల మండి ధరల సమాచారం గురించి అడగవచ్చు.",
-                    "hi-IN": "नमस्ते! मैं किसान साथी AI सहायक हूँ। आप मुझसे फसलों के मंडी भाव की जानकारी पूछ सकते हैं।",
-                    "en-IN": "Hello! I am Kisan Saathi, your AI farming assistant. You can ask me about mandi crop prices.",
-                    "hi-en": "Namaste! Main Kisan Saathi AI assistant hoon. Aap mujhse mandi crop prices pooch sakte hain.",
-                }
-            else:
-                greetings = {
-                    "te-IN": "నమస్కారం! మీరు ఏ పంట మండి ధర తెలుసుకోవాలనుకుంటున్నారు?",
-                    "hi-IN": "नमस्ते! आप किस फसल का मंडी भाव जानना चाहते हैं?",
-                    "en-IN": "Hello! Which crop's mandi price would you like to know?",
-                    "hi-en": "Namaste! Aap kis crop ka mandi price jaanna chahte hain?",
-                }
-            reply = greetings.get(user_lang, greetings["te-IN"])
+            greeting_key = "greeting_first_turn" if is_first_turn else "greeting_repeat"
+            reply = get_message(greeting_key, user_lang)
             disclosed_model = "rule_based/greeting"
+            get_dialogue_repo().set_state(
+                phone_hash,
+                {
+                    "intent": IntentType.MANDI_PRICE_QUERY,
+                    "pending_slot": "commodity",
+                    "clarification_type": "missing_commodity",
+                },
+            )
+        elif parsed.intent == IntentType.SMALL_TALK:
+            st_key = f"small_talk_{parsed.small_talk_type or 'ok'}"
+            reply = get_message(st_key, user_lang)
+            disclosed_model = f"rule_based/{st_key}"
+        elif parsed.intent == IntentType.CAPABILITIES_QUERY:
+            reply = get_message("capabilities_query", user_lang)
+            disclosed_model = "rule_based/capabilities"
+            get_dialogue_repo().set_state(
+                phone_hash,
+                {
+                    "intent": IntentType.MANDI_PRICE_QUERY,
+                    "pending_slot": "commodity",
+                    "clarification_type": "missing_commodity",
+                },
+            )
+        elif parsed.intent == IntentType.LOCATION_QUERY:
+            reply = get_message("location_query", user_lang)
+            disclosed_model = "rule_based/location"
         else:
             if settings.ECHO_UNSUPPORTED:
                 llm_adapter = OpenAICompatibleLLM(settings=settings)
                 reply, disclosed_model = await llm_adapter.answer(text, lang=user_lang)
             else:
-                reply = UNSUPPORTED_INTENT_MESSAGES.get(user_lang, UNSUPPORTED_INTENT_MESSAGES["te-IN"])
+                reply = get_message("unsupported_intent", user_lang)
                 disclosed_model = llm_disclosed or "rule_based/unsupported_intent"
 
         await channel.send_text(sender_phone, reply)
@@ -451,6 +480,8 @@ async def handle_text_message(
             "user_hash": phone_hash,
             "channel": channel.channel_name,
             "model_name": disclosed_model,
+            "intent": parsed.intent.value if parsed else None,
+            "tool": disclosed_model,
             "status": "ok",
             "transcript": text if settings.STORE_RAW_TRANSCRIPTS else None,
             "reply": reply if settings.STORE_RAW_TRANSCRIPTS else None,
@@ -458,7 +489,20 @@ async def handle_text_message(
     except Exception as e:
         log.exception("Text message answering failed: %s", e)
         err_lang = _resolve_user_language(phone_hash, None, settings)
-        fallback_msg = FALLBACK_MESSAGES.get(err_lang, FALLBACK_MESSAGES["te-IN"])
+        if isinstance(e, MandiServiceUnavailableError):
+            fallback_msg = get_message("mandi_service_unavailable", err_lang)
+        else:
+            fallback_msg = get_message("fallback_1551", err_lang)
+
+        await get_event_repo().log_event({
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "channel": channel.channel_name,
+            "status": "error",
+            "error_type": type(e).__name__,
+            "intent": parsed.intent.value if parsed else None,
+            "tool": disclosed_model if disclosed_model else None,
+        })
         try:
             await channel.send_text(sender_phone, fallback_msg)
         except Exception:
@@ -485,7 +529,7 @@ async def handle_incoming_message(
             try:
                 phone_hash = hash_phone(sender_phone, cfg.PHONE_HASH_SALT)
                 user_lang = _resolve_user_language(phone_hash, None, cfg)
-                unsupported_msg = UNSUPPORTED_MEDIA_MESSAGES.get(user_lang, UNSUPPORTED_MEDIA_MESSAGES["te-IN"])
+                unsupported_msg = get_message("unsupported_media", user_lang)
                 await channel.send_text(sender_phone, unsupported_msg)
             except Exception:
                 log.exception("Failed to send unsupported message notification")

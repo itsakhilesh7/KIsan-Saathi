@@ -12,7 +12,11 @@ class IntentType(str, Enum):
     WEATHER_QUERY = "weather_query"
     CROP_ADVISORY_QUERY = "crop_advisory_query"
     GREETING_OR_HELP = "greeting_or_help"
+    SMALL_TALK = "small_talk"
+    CAPABILITIES_QUERY = "capabilities_query"
+    LOCATION_QUERY = "location_query"
     UNSUPPORTED_OR_UNCLEAR = "unsupported_or_unclear"
+
 
 
 class IntentSlots(BaseModel):
@@ -39,3 +43,6 @@ class ParsedIntent(BaseModel):
     missing_required_slots: list[str] = Field(default_factory=list)
     clarification_needed: bool = False
     clarification_type: str | None = None
+    small_talk_type: str | None = None
+    is_assumed_district: bool = False
+

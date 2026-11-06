@@ -2,12 +2,13 @@
 
 import pytest
 
-from backend.app.services.orchestrator import (
-    AUDIO_TOO_LONG_MESSAGES,
-    EMPTY_TRANSCRIPT_MESSAGES,
-    FALLBACK_MESSAGES,
-    UNSUPPORTED_MEDIA_MESSAGES,
-)
+from backend.app.core.messages import MESSAGES
+
+EMPTY_TRANSCRIPT_MESSAGES = MESSAGES["empty_transcript"]
+FALLBACK_MESSAGES = MESSAGES["fallback_1551"]
+AUDIO_TOO_LONG_MESSAGES = MESSAGES["audio_too_long"]
+UNSUPPORTED_MEDIA_MESSAGES = MESSAGES["unsupported_media"]
+
 
 
 def test_language_aware_dictionaries_contain_all_four_languages():

@@ -9,11 +9,11 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P0 (Access & Audit):** Done.
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
-- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), and Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation) Done (96 unit tests passing). Curated crop advisory proposal prepared for Step 3.1.
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), and Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality) Done (108 unit tests passing).
 - **P4 (Crop Q&A + Safety):** Step 3.1 completed (curated advisory document list proposed; awaiting approval).
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
-- **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py`) polished with identical normalization and Hinglish intent extraction.
-- **P7 (Hardening & Review):** In Progress. Centralized user-facing strings into `backend/app/core/messages.py` and generated `docs/WORDING_REVIEW.md`.
+- **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py` & `backend/scripts/report_wer.py`) verified (Hindi WER 10.12%, Telugu WER 12.40%, Hinglish intent pass).
+- **P7 (Hardening & Review):** Done. Centralized user-facing strings into `backend/app/core/messages.py`, zero Indic script literals in `services/` or `channels/`, and generated `docs/WORDING_REVIEW.md`.
 - **P8 (Submission):** Not started.
 
 ### What works right now
@@ -23,12 +23,16 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - Confirmed Pilot (`config/pilot.yaml` with `confirmed: true`): Warangal district (Telangana), APMCs Warangal & Cherial, crops paddy (`Common` and `Fine/Superfine/Grade A`), cotton, chilli (`Green Chilli` and `Dry Chillies` with clarification), and tomato.
 - Mandi price units confirmed as **Rs per quintal** (`MANDI_PRICE_UNIT: str = "Rs per quintal"`), with natural localized wording (`క్వింటాలుకు`, `प्रति क्विंटल`, `per quintal`).
 - Persistent SQLite Mandi Cache (`integrations/data_gov/mandi_cache.py`) protecting against data.gov.in downtime/502s, with state-level fallback for cotton/dry chilli when Warangal district reports no records.
+- Mandi cache lifecycle bug fix (`mandi.py` uses `active_cache.save_evidence`, logs error classes, and provides specific `mandi_service_unavailable` message if cache is empty on API failure).
 - Variety and grade separation in grounded answer composer: distinct varieties (e.g. `Paddy (Common)` vs `Paddy (Fine/Superfine)`) are explicitly named and never mixed.
 - Open-Meteo 3-day weather forecast connector (`integrations/weather/open_meteo.py`) with geocoding, allowlisted endpoints, in-memory caching, and `Evidence` normalization.
 - Grounded answer composers (`services/answer_composer.py`) for mandi prices and weather forecasts enforcing $\le 3$ sentences, strictly verified numbers, uncertainty phrasing, and safety constraints (never claiming conditions are "safe" for spraying or farm operations).
-- Centralized user-facing strings module (`core/messages.py`) and review catalog (`docs/WORDING_REVIEW.md`) fixing non-standard Telugu (`హవామాన` -> `వాతావరణం`).
-- Speech evaluation script (`scripts/eval_wer.py`) with identical normalization (WER 0 mathematically guarantees CER 0) and dedicated Hinglish intent/slot extraction.
-- Complete unit test suite: **96 unit tests passing** in ~28s (`pytest backend/tests/unit/`).
+- Centralized user-facing strings module (`core/messages.py`, 41 message keys in te, hi, en, hi-en) with 0 Indic literals in `services/` or `channels/`, and auto-generated `docs/WORDING_REVIEW.md`.
+- Natural postposition dates (e.g. "నవంబర్ 5న", "5 नवंबर को") and script harmonization (Latin entities transliterated to Indic script for voice synthesis).
+- Conversational dialogue handling: multi-turn pending crop resolution, standalone short crop queries defaulting to Warangal with notification, small-talk handling (thanks, ok, bye, capabilities query, location query).
+- Audio hardening: audio $< 1$s or empty transcript returns prompt immediately; spoken replies capped at $\le 15$s.
+- Speech evaluation script (`scripts/eval_wer.py` & `report_wer.py`) with identical normalization (WER 0 mathematically guarantees CER 0) and dedicated Hinglish intent/slot extraction.
+- Complete unit test suite: **108 unit tests passing** (`pytest backend/tests/unit/`).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -50,6 +54,43 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ---
 
 ## LOG
+
+### [2026-11-06 21:00] Phase 3D: Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, and Speech Quality
+- **Goal and phase:** Phase 3D (Fix pass from live Telegram tests and open items from previous review). Centralized all user strings into `messages.py`, eliminated all Indic script literals outside `messages.py`, fixed the Mandi cache persistence bug without explicit cache, handled live conversation screenshot edge-cases (small talk, pending crop state, standalone crop query), harmonized speech quality/dates, rejected sub-second audio, and prefetched live pilot mandi records.
+- **What changed:**
+  - **A. Wording Single Source of Truth:**
+    - Centralized all 41 message templates into `backend/app/core/messages.py` across `te`, `hi`, `en`, and `hi-en`.
+    - Created `backend/app/core/keywords.py` holding language lexicons (districts, greetings, small talk, safety keywords).
+    - Removed all hardcoded string dictionaries and Indic literals (`\u0c00-\u0c7f` and `\u0900-\u097f`) from `orchestrator.py`, `answer_composer.py`, and `intent_service.py`.
+    - Added unit test `backend/tests/unit/test_wording_single_source.py` enforcing zero Indic script literals in `services/` or `channels/`.
+    - Auto-generated `docs/WORDING_REVIEW.md` via `backend/scripts/generate_wording_review.py` to prevent drift.
+  - **B. Mandi Cache Lifecycle & Graceful Failure:**
+    - Fixed line 256 of `backend/app/integrations/data_gov/mandi.py`: replaced `cache.save_evidence` with `active_cache.save_evidence` so normal calls without an explicit cache persist correctly into the SQLite cache.
+    - Removed duplicate return statement and added structured logging of exception class names on cache failure.
+    - Added `MandiServiceUnavailableError` raising `mandi_service_unavailable` message in the user's language when both live API and cache are unavailable, replacing the generic 1551 fallback.
+    - Added unit test `backend/tests/unit/test_mandi_cache_lifecycle_bug.py`.
+  - **C. Conversation Handling (Screenshot Test Cases):**
+    - Multi-turn pending crop resolution: stored dialogue state when asking "which crop?" so answers like "Tomato", "Potato", "Cotton", or "టమాటా" resolve directly.
+    - Standalone short crop queries ($\le 3$ words) assume pilot district Warangal with an explicit notification message ("Showing Warangal; tell me another district if you want").
+    - Small-talk handling: "thanks" / "ok" / "bye" return brief polite acknowledgments without the full menu; "what all can u help me with" explains capabilities (mandi + weather, crop advisory coming); "what's my location?" explains no GPS access and asks for district.
+    - Added unit test `backend/tests/unit/test_conversation_flows.py` reproducing the exact user screenshot sequences.
+  - **D. Speech Quality & Script Harmonization:**
+    - Natural dates with embedded postpositions ("నవంబర్ 5న", "5 नवंबर को", "5 November", "5 November ko") without duplicate suffixes.
+    - Script harmonization: transliterated Latin entities and units in Indic speech text before TTS (`Warangal` -> `వరంగల్`/`वारंगल`, `°C` -> `డిగ్రీల సెల్సియస్`, `%` -> `శాతం`, `Rs` -> `రూపాయలు`).
+    - Spoken responses strictly capped at $\le 15$s with audio duration logged.
+  - **E. Short/Empty Audio & Event Logging:**
+    - Audio $< 1$s or empty transcript immediately returns `empty_transcript` prompt without raw transcripts.
+    - Log events record `error_type` (exception class name only), `intent`, `tool`, and `audio_duration_seconds`.
+    - Added unit test `backend/tests/unit/test_speech_quality_and_short_audio.py`.
+  - **F. Live Mandi Prefetch & Speech Metrics:**
+    - Executed `backend/scripts/prefetch_mandi.py` against live data.gov.in: cached 22 records for Warangal & Telangana (Paddy Rs 2800 at Cherial APMC, Cotton Rs 8800 at Nekkonda APMC, Dry Chilli Rs 11000 at Mahboob Mansion APMC).
+    - Verified all arrival dates returned today are `2026-11-06` (fresh).
+    - Generated normalized WER/CER reporting via `backend/scripts/report_wer.py` (Hindi WER 10.12% / CER 4.19%, Telugu WER 12.40% / CER 3.89%, Hinglish intent pass).
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/`: 108 passed, 0 failed in 12.54s.
+  - `ruff check backend/ scripts/`: All checks passed (0 errors).
+  - `python scripts/scan_secrets.py`: [OK] CLEAN: No exposed secrets detected.
+- **Tests:** 108 passed, 0 failed.
 
 ### [2026-11-05 17:00] Phase 3C (Part 1 & 2): Pilot Confirmation, Mandi Cache, Variety Separation, Wording Centralization & WER Polish
 - **Goal and phase:** Phase 3C (Parts 1 & 2). Applied user confirmations, hardened mandi against data.gov.in 502/timeouts via SQLite cache, added state fallback, separated crop varieties/grades, centralized user strings into `messages.py`, generated `docs/WORDING_REVIEW.md`, and polished speech evaluation logic.
@@ -300,3 +341,42 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **Git commit hash and message:**
   - Prior commit: `165b8be` ("chore: scaffold repository from agent pack and starter code").
   - Current commit: `555f377` ("feat: complete Phase 0 audit and Phase 1 backend foundation").
+
+### [2026-11-06 16:30] Phase 3D Fix Pass and Review Items Complete
+- **Goal and phase:** Phase 3D: fix pass from live Telegram tests, plus review open items (wording single source of truth, mandi cache bug, conversation handling, speech quality, short audio handling, prefetch script, wer mathematical consistency).
+- **What changed:**
+  - **Section A (Wording Single Source of Truth):**
+    - Consolidated ALL user-facing strings, prompts, and templates into `backend/app/core/messages.py` across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`.
+    - Removed duplicate dictionary tables from `answer_composer.py` (`AI_DISCLAIMERS`, `CAVEATS`, `STALENESS_WARNINGS`, `NO_RECORDS_MESSAGES`, `UNSUPPORTED_INTENT_MESSAGES`, `CLARIFICATION_MESSAGES`, `CHILLI_CLARIFICATION_MESSAGES`) and `orchestrator.py` (`EMPTY_TRANSCRIPT_MESSAGES`, `FALLBACK_MESSAGES`, `AUDIO_TOO_LONG_MESSAGES`, `UNSUPPORTED_MEDIA_MESSAGES`).
+    - Created `backend/app/core/keywords.py` moving all keyword recognition lexicons out of `services/` and `channels/`.
+    - Added unit test `backend/tests/unit/test_wording_single_source.py` asserting ZERO Telugu (`\u0c00-\u0c7f`) or Devanagari (`\u0900-\u097f`) literals exist in `services/` or `channels/`.
+    - Created `backend/scripts/generate_wording_review.py` auto-generating `docs/WORDING_REVIEW.md` directly from `messages.py`.
+  - **Section B (Mandi Cache Bug & Graceful API Failure):**
+    - Fixed line 256 bug in `backend/app/integrations/data_gov/mandi.py` where `cache.save_evidence(...)` raised AttributeError because `cache` was `None`. Now saves using `active_cache.save_evidence(evidence_list)` and logs `type(ce).__name__`.
+    - Removed duplicate `return evidence_list`.
+    - Added `MandiServiceUnavailableError`: when API fails and cache is empty, replies with language-aware specific message (`"the price service is not responding right now, please try again in a few minutes"` / `"ధరల సేవ ప్రస్తుతం స్పందించడం లేదు..."`), never generic 1551 fallback.
+    - Added reproduction unit test in `backend/tests/unit/test_mandi_cache_lifecycle_bug.py` verifying cache save with `cache=None`, cached fallback on 502 with date caveat, and specific service-down message.
+  - **Section C (Conversation Handling from Screenshots):**
+    - Multi-turn state: when bot asks a question (greeting/help or clarification), stores pending dialogue state (`pending_slot="commodity"`). Resolves single-word crop replies like "Tomato", "Potato", "Cotton", "టమాటా", "ఆలూ".
+    - Standalone crop query: short message (<= 3 words) that is only a known commodity name is treated as mandi query for pilot district Warangal, with assumed district notice prepended ("Showing Warangal; tell me another district if you want").
+    - Small talk: added handlers for "thanks", "ok", "bye" (short friendly replies without long menu), "what can you do" (capabilities: mandi prices + weather, crop advice coming soon), and "what's my location?" (states bot does not have GPS and offers to take district name).
+    - Added unit test `backend/tests/unit/test_conversation_flows.py` reproducing exact screenshot sequences:
+      1. `Hi` -> `What all can u help me` -> `Tomato` -> `Tell me the price of cotton` -> `Thank you`.
+      2. Telugu chilli flow answered with voice note `'ఎండు మిర్చి'`.
+  - **Section D & E (Speech Quality & Short Audio):**
+    - Natural dates: formatted with language postpositions ("నవంబర్ 5న", "5 नवंबर को", "5 November", "5 November ko") without glued duplicate suffixes.
+    - Speech script harmonization: added `to_speech_text` in `messages.py` translating Latin pilot district/market names and units to native script forms ("Warangal" -> "వరంగల్" / "वारंगल", "°C" -> "డిగ్రీల సెల్సియస్", "%" -> "శాతం", "Rs" -> "రూపాయలు").
+    - Audio < 1s rejected immediately with language-aware `empty_transcript` message and logged as `status="audio_too_short"`.
+    - Event logging: captures `error_type` (exception class name only, no message text), `intent`, and `tool`. No raw transcripts. Logs synthesized audio duration (`audio_duration_seconds`).
+    - Added unit test `backend/tests/unit/test_speech_quality_and_short_audio.py`.
+  - **Section F (Open Review Items & Prefetch):**
+    - Created `backend/scripts/report_wer.py` mathematically recomputing WER/CER per-clip and summary tables directly from `out/wer_results.csv`. Added test in `test_eval_wer.py`.
+    - Created `backend/scripts/prefetch_mandi.py` prefetching Warangal pilot crops (Paddy, Cotton, Green & Dry Chilli, Tomato) and state fallbacks.
+    - Verified live prefetch against data.gov.in: cached 22 records into `data/mandi_cache.sqlite3`. Confirmed all live arrival dates returned today are `2026-11-06` (no older dates returned today).
+- **Commands run and real results:**
+  - `python -m pytest backend/tests/unit/`: 108 passed, 1 warning in 12.54s.
+  - `ruff check backend/ scripts/`: All checks passed! (0 errors).
+  - `python scripts/scan_secrets.py`: Clean working tree and Git history.
+  - `python -m backend.scripts.prefetch_mandi`: 22 records cached into `data/mandi_cache.sqlite3`.
+  - `python -m backend.scripts.report_wer`: Verified exact math tables.
+

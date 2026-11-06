@@ -248,7 +248,8 @@ def test_intent_extraction_and_dialogue_clarification(tmp_path):
     assert res1.slots.district == "Warangal"
 
     clarify_text = compose_clarification_reply(language="te-IN")
-    assert "పంట పేరు" in clarify_text
+    assert "ఏ పంట" in clarify_text
+
 
     # Next turn: user replies "పత్తి" (Cotton) -> merges with previous Warangal slot
     res2 = extract_intent("పత్తి", language="te-IN", user_hash="u_123", dialogue_repo=repo)

@@ -7,14 +7,15 @@ Also verifies that the user preference repository remembers last seen language.
 """
 
 from backend.app.core.config import Settings
+from backend.app.core.messages import MESSAGES
 from backend.app.integrations.gnani.tts import pick_voice
 from backend.app.repositories.user_preferences import SQLiteUserPreferencesRepository
-from backend.app.services.orchestrator import (
-    AUDIO_TOO_LONG_MESSAGES,
-    EMPTY_TRANSCRIPT_MESSAGES,
-    FALLBACK_MESSAGES,
-    UNSUPPORTED_MEDIA_MESSAGES,
-)
+
+EMPTY_TRANSCRIPT_MESSAGES = MESSAGES["empty_transcript"]
+FALLBACK_MESSAGES = MESSAGES["fallback_1551"]
+AUDIO_TOO_LONG_MESSAGES = MESSAGES["audio_too_long"]
+UNSUPPORTED_MEDIA_MESSAGES = MESSAGES["unsupported_media"]
+
 
 
 def test_pick_voice_uses_pilot_primary_language_when_none(tmp_path):
