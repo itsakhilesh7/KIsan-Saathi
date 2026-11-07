@@ -68,6 +68,17 @@ def test_report_wer_mathematical_consistency():
     assert res["hinglish_count"] == 4
 
     summary_data = res["summary_data"]
+    per_clip_data = res["per_clip_data"]
+
+    # Assert that reported averages strictly equal the mean of the rows
+    for (lang, mode), (count, m_wer, m_cer) in summary_data.items():
+        matching = [r for r in per_clip_data if r["language"] == lang and r["mode"] == mode]
+        assert len(matching) == count
+        expected_wer = sum(r["wer"] for r in matching) / count
+        expected_cer = sum(r["cer"] for r in matching) / count
+        assert abs(m_wer - expected_wer) < 1e-6, f"Mismatch in WER average for ({lang}, {mode})"
+        assert abs(m_cer - expected_cer) < 1e-6, f"Mismatch in CER average for ({lang}, {mode})"
+
     # Hindi explicit
     assert ("Hindi", "explicit") in summary_data
     count, m_wer, m_cer = summary_data[("Hindi", "explicit")]

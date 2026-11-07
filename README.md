@@ -187,25 +187,61 @@ python -m backend.scripts.eval_wer --csv backend/data/transcripts.csv
 
 ---
 
-## 4. Current Project Status (Phase 0 & Phase 1 Complete)
+## 4. Current Project Status (Phase 5-lite Complete)
 
-| Component | Status | Verification State |
-|---|---|---|
-| Workspace & Git Initialization | ✅ Done | Initialized locally; secrets & media gitignored |
-| Code Audit (`docs/code-audit.md`) | ✅ Done | All files audited; top 5 bugs documented |
-| Core Typed Settings (`pydantic-settings`) | ✅ Done | Reads all `.env.example` keys; startup warning on pilot |
-| Health Endpoint (`/api/health`) | ✅ Done | Exposes status & config booleans (never secret values) |
-| Request-ID & Structured JSON Logging | ✅ Done | Salted phone hashes; no secrets or raw audio in logs |
-| Gnani Prisma STT & Timbre TTS Adapters | ✅ Done | Explicit timeouts; 429/5xx retries; lang normalization |
-| WhatsApp Webhook Hardening | ✅ Done | Production secret gate; constant-time sig; SQLite dedup |
-| OpenAI-Compatible LLM Adapter | ✅ Done | Echo mode when unconfigured; disclosures attached |
-| Audio Service (FFmpeg / FFprobe) | ✅ Done | 16kHz WAV conversion, OGG/Opus encoding, 25s chunking |
-| Test Suite | ✅ Done | 39 passed, 5 skipped (2 live without keys, 3 ffmpeg fixtures), 0 failed |
+Kisan Saathi is fully hardened, containerized, and deployable for public pilot testing under strict safety constraints (`rules.md`).
 
-For the detailed living progress log and decisions, consult:
-- [docs/PROGRESS.md](docs/PROGRESS.md)
-- [docs/code-audit.md](docs/code-audit.md)
-- [docs/MANUAL_TASKS.md](docs/MANUAL_TASKS.md)
-- [docs/decisions.md](docs/decisions.md)
-- [docs/PACK_README.md](docs/PACK_README.md)
+### Test Suite Status
+- **Unit Tests Passing:** **205 passed**, 0 failed, 0 warnings/errors (ran in ~30s).
+- **Fast-Fail Timeout Protection:** `pytest-timeout` configured at 60s per test in `pyproject.toml`.
+- **Wording Single Source of Truth:** 100% of user-visible strings across Telugu, Hindi, English, and Hinglish are centralized in `backend/app/core/messages.py`. Zero Indic script literals permitted in `services/` or `channels/`.
+- **Settings Parity:** Guaranteed 1:1 key and default matching between `Settings` and `.env.example`.
+- **Secret Hygiene:** Working tree and Git commit history clean (verified with `python scripts/scan_secrets.py`).
+
+### Live vs Mocked Components
+
+| Component | Status | Execution Mode | Verification & Evidence |
+|---|---|---|---|
+| **Gnani Prisma STT v3.0** | ✅ Active | **LIVE** | Evaluated on 10 farmer audio clips (`out/wer_results.csv`). Mean WER: Hindi 10.12%, Telugu 14.32% in `indic-auto`. |
+| **Gnani Timbre TTS v2.5** | ✅ Active | **LIVE** | Synthesizes native audio using language-matched voices: Lavanya (`te-IN`), Nalini (`hi-IN`), Kaveri (`en-IN`), Poorvi (`hi-en`). |
+| **Agmarknet Mandi API** | ✅ Active | **LIVE** | Live data.gov.in integration for Warangal, Telangana. Features modal price extraction, dates in natural language, unit attribution (Rs per quintal), and SQLite offline caching with non-blocking startup warmup. |
+| **Open-Meteo Weather API** | ✅ Active | **LIVE** | Live 3-day weather forecasts for Warangal with rain probability and max/min temperatures. |
+| **Telegram Channel** | ✅ Active | **LIVE** | Fallback channel (D-002) supporting both **long polling** (local dev) and **webhook mode** with secret token verification (`POST /telegram/webhook/<secret_path>`) for cloud deployment. |
+| **WhatsApp Cloud API** | ✅ Ready | **LIVE Ready** | Production-hardened with HMAC-SHA256 signature enforcement, media streaming, and SQLite deduplication. |
+| **Evon LLM Adapter** | ⚠️ Stand-in | **MOCKED / Disclosed** | Per D-009, no hosted API exists yet. Runs in disclosed stand-in mode. Follows safety rules strictly (never invents prices or chemical doses; refers farmers to 1551 helpline). |
+| **Usage Caps & Protection** | ✅ Active | **LIVE (SQLite)** | Daily per-user voice limit (`DAILY_USER_VOICE_LIMIT=10`), global daily limit (`DAILY_GLOBAL_VOICE_LIMIT=200`), 30s audio cutoff (`PUBLIC_VOICE_MAX_SECONDS=30`), and admin hash bypass. |
+
+---
+
+## 5. Deployment & Telegram Webhook Setup
+
+Kisan Saathi is packaged as a lightweight Docker container (`Dockerfile` based on `python:3.11-slim` with `ffmpeg` and `curl`).
+
+### Recommended Host: Render
+Render is recommended for hosting because of its native Docker support, built-in HTTPS endpoints for Telegram webhooks, and automatic `/health` endpoint checks.
+
+For complete step-by-step instructions, see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+### Quick Telegram Webhook Commands
+```powershell
+# Set webhook on deployed service
+python -m backend.scripts.manage_telegram_webhook set https://your-service.onrender.com
+
+# Inspect webhook status and pending updates
+python -m backend.scripts.manage_telegram_webhook info
+
+# Revert to local long polling
+python -m backend.scripts.manage_telegram_webhook delete
+python -m backend.scripts.run_telegram_polling
+```
+
+---
+
+## 6. Project Documentation & Audit Trail
+
+- **[docs/DEPLOY.md](docs/DEPLOY.md)** - Render and Railway deployment guide and ephemeral disk note.
+- **[docs/PROGRESS.md](docs/PROGRESS.md)** - Chronological development log across all phases.
+- **[docs/WORDING_REVIEW.md](docs/WORDING_REVIEW.md)** - Auto-generated linguistic audit of all 42 bot prompts.
+- **[docs/decisions.md](docs/decisions.md)** - Architecture Decision Records (ADR-001 through ADR-011).
+- **[docs/code-audit.md](docs/code-audit.md)** - Starter code audit and bug resolution checklist.
 

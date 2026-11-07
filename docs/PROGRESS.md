@@ -404,3 +404,44 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
   - `python -m backend.scripts.prefetch_mandi`: 22 records cached into `data/mandi_cache.sqlite3`.
   - `python -m backend.scripts.report_wer`: Verified exact math tables.
 
+---
+
+## 2026-11-07 - Phase 5-lite: Deployable Container, Telegram Webhook Mode, Usage Caps & Verification
+- **Goal:** Package Kisan Saathi for public deployment and sharing under strict safety invariants (`rules.md`), implement secure Telegram webhook intake, enforce daily voice rate-limits to protect Gnani credits, configure `pytest-timeout`, and verify mathematical precision in speech reports.
+- **Components Implemented & Verified:**
+  1. **Fast-Fail Pytest Timeout:**
+     - Installed `pytest-timeout==2.4.0` in `.venv`.
+     - Configured `addopts = "-v --tb=short --timeout=60"` in `pyproject.toml` ensuring tests fail fast after 60s without hanging.
+  2. **Telegram Webhook Mode for Cloud Hosting:**
+     - Created `backend/app/channels/telegram/webhook.py` mounting `POST /telegram/webhook/{webhook_path}`.
+     - Validates URL secret path segment against `settings.TELEGRAM_WEBHOOK_PATH` and header against `settings.TELEGRAM_WEBHOOK_SECRET` via `secrets.compare_digest`.
+     - Returns HTTP 200 `{"ok": true}` immediately and enqueues update processing asynchronously via FastAPI `BackgroundTasks`.
+     - Update deduplication verified via SQLite `DeduplicationRepository` (`test_telegram_webhook_deduplication`).
+     - Created `backend/scripts/manage_telegram_webhook.py` supporting `set <base_url>`, `delete`, and `info` commands with automatic token redaction.
+     - Preserved `backend/scripts/run_telegram_polling.py` for local development.
+  3. **Usage Caps & Public Bot Protection:**
+     - Created `backend/app/repositories/usage_limits.py` implementing `SQLiteUsageLimitsRepository` in `data/usage_limits.sqlite3`.
+     - Added configurable settings in `Settings` and `.env.example`:
+       - `DAILY_USER_VOICE_LIMIT: int = 10`
+       - `DAILY_GLOBAL_VOICE_LIMIT: int = 200`
+       - `PUBLIC_VOICE_MAX_SECONDS: int = 30`
+       - `ADMIN_USER_HASHES: str = ""`
+     - Orchestrator checks: rejects audio $> 30$s for public bot; checks daily user and global voice caps prior to STT/TTS; responds with polite localized `voice_limit_reached` message (`te-IN`, `hi-IN`, `en-IN`, `hi-en`) via text. Text queries remain unmetered.
+     - Admin bypass for hashed user IDs in `ADMIN_USER_HASHES`.
+  4. **Docker Packaging & Cloud Deployment Documentation:**
+     - Created `Dockerfile` (based on `python:3.11-slim`, with `ffmpeg`, `curl`, healthcheck on `/health`, start command `uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}`).
+     - Created `.dockerignore` and production `requirements.txt`.
+     - Added non-blocking asynchronous mandi cache warmup on startup in `backend/app/main.py` lifespan (`_warmup_mandi_cache`).
+     - Authored `docs/DEPLOY.md` detailing Render (recommended) and Railway deployment, required environment variables, start command, webhook configuration, and the ephemeral disk notice for SQLite databases.
+  5. **WER Report Precision:**
+     - Verified `backend/scripts/report_wer.py` computes per-clip and summary tables directly from `out/wer_results.csv`.
+     - Added mathematical assertion in `backend/tests/unit/test_eval_wer.py` guaranteeing summary averages strictly equal the arithmetic mean of the per-clip rows.
+  6. **Documentation & Wording Single Source of Truth:**
+     - Refreshed `README.md` with complete LIVE vs MOCKED status table, test counts, and deployment instructions.
+     - Synchronized `docs/WORDING_REVIEW.md` from `backend/app/core/messages.py` via `backend.scripts.generate_wording_review`.
+- **Commands run and real results:**
+  - `pytest backend/tests/unit/`: **205 passed**, 1 warning in 37.77s.
+  - `ruff check backend/ scripts/`: All checks passed! (0 errors).
+  - `python scripts/scan_secrets.py`: Clean working tree and Git commit history.
+  - `python -m backend.scripts.report_wer`: Verified exact math tables.
+

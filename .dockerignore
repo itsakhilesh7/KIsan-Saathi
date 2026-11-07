@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+data/*.sqlite3
+out/
+.env
+backend/.env
+tests/
+backend/tests/
+clips/
+backend/data/clips/
