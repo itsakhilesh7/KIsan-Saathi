@@ -41,7 +41,7 @@ GREETING_KEYWORDS: set[str] = {
 PRICE_KEYWORDS: set[str] = {
     "ధర", "రేటు", "ధరలు", "రేట్లు", "మండి", "మార్కెట్",
     "भाव", "दाम", "कीमत", "मंडी", "रेट",
-    "price", "rate", "mandi", "cost", "market",
+    "price", "rate", "mandi", "cost", "market", "bhav", "dam", "kimat",
 }
 
 WEATHER_KEYWORDS: set[str] = {
@@ -64,11 +64,11 @@ CROP_ADVISORY_KEYWORDS: set[str] = {
 
 # Chilli disambiguation tokens
 CHILLI_GREEN_TOKENS: set[str] = {
-    "పచ్చి", "green", "hari", "1", "పచ్చి మిర్చి", "పచ్చిమిర్చి", "हरी मिर्च"
+    "పచ్చి", "green", "hari", "1", "పచ్చి మిర్చి", "పచ్చిమిర్చి", "हरी मिर्च", "हरी",
 }
 
 CHILLI_DRY_TOKENS: set[str] = {
-    "ఎండు", "ఎర్ర", "dry", "red", "sukhi", "lal", "2", "ఎండు మిర్చి", "ఎండుమిర్చి", "सूखी लाल मिर्च", "लाल मिर्च"
+    "ఎండు", "ఎర్ర", "dry", "red", "sukhi", "lal", "2", "ఎండు మిర్చి", "ఎండుమిర్చి", "सूखी लाल मिर्च", "लाल मिर्च", "सूखी",
 }
 
 # Small talk keywords
@@ -87,7 +87,7 @@ OK_KEYWORDS: set[str] = {
 BYE_KEYWORDS: set[str] = {
     "bye", "goodbye", "bye bye", "tata", "alvida",
     "వీడ్కోలు", "టాటా", "వెళ్లొస్తా", "బై",
-    "अलविदा", "बाय", "टाटा", "नमस्ते",
+    "अलविदा", "बाय", "टाटा",
 }
 
 CAPABILITIES_KEYWORDS: set[str] = {

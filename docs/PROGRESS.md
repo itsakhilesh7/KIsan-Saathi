@@ -9,7 +9,7 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P0 (Access & Audit):** Done.
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
-- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), and Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality) Done (108 unit tests passing).
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality), and Router Hardening Done (198 unit tests passing).
 - **P4 (Crop Q&A + Safety):** Step 3.1 completed (curated advisory document list proposed; awaiting approval).
 - **P5 (Evon, Web Demo, Dashboard):** Not started.
 - **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py` & `backend/scripts/report_wer.py`) verified (Hindi WER 10.12%, Telugu WER 12.40%, Hinglish intent pass).
@@ -32,7 +32,8 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - Conversational dialogue handling: multi-turn pending crop resolution, standalone short crop queries defaulting to Warangal with notification, small-talk handling (thanks, ok, bye, capabilities query, location query).
 - Audio hardening: audio $< 1$s or empty transcript returns prompt immediately; spoken replies capped at $\le 15$s.
 - Speech evaluation script (`scripts/eval_wer.py` & `report_wer.py`) with identical normalization (WER 0 mathematically guarantees CER 0) and dedicated Hinglish intent/slot extraction.
-- Complete unit test suite: **108 unit tests passing** (`pytest backend/tests/unit/`).
+- Router hardening: whole-word regex (`\b...\b`) for Latin keywords and exact token/phrase matching for Indic; strict 4-tier precedence (domain intents -> pending dialogue -> conversational metadata for short messages <= 6 tokens); exact short chilli follow-up enforcement.
+- Complete unit test suite: **198 unit tests passing** (`pytest backend/tests/unit/`).
 
 ### Verified LIVE vs only MOCKED
 | Integration | Status | Verification Note |
@@ -54,6 +55,29 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 ---
 
 ## LOG
+
+### [2026-11-07 11:50] Router Hardening: Precedence, Keyword Boundaries, and Table-Driven Verification
+- **Goal and phase:** Router hardening for `intent_service.py`, `keywords.py`, and `commodity_resolver.py`. Test-first; reproduced all 3 user-reported bugs with failing unit tests, implemented strict whole-word/exact-token matching, established 4-tier precedence, added exact short chilli disambiguation follow-up, and verified across a 90-case test suite including >50 table-driven realistic utterances.
+- **What changed:**
+  - **1. "नमस्ते" Bug Fixed:** Removed `"नमस्ते"` from `BYE_KEYWORDS` in `backend/app/core/keywords.py`. A Hindi hello is now correctly classified as `GREETING_OR_HELP`, never as `SMALL_TALK` bye.
+  - **2. Substring Matching Eliminated:**
+    - Script-specific boundary matching: Latin keywords match as whole words using regex word boundaries `\b...\b`; Indic keywords match as whole tokens or exact phrase token sequences.
+    - Commodity resolver hardened (`commodity_resolver.py`): eliminated substring matches that caused "price" to resolve to "Paddy(Common)" (matching "rice") and "Dhanyavad" to resolve to "Paddy(Common)" (matching "dhan").
+    - Telugu district matching supports attached case markers (e.g. `"వరంగల్‌లో"`, `"ఖమ్మంలో"`).
+  - **3. Strict 4-Tier Precedence in `extract_intent`:**
+    - **Tier 1 (Strong domain queries):** Weather, Mandi Price, and Crop Advisory intents win whenever strong domain keywords, commodities, or districts are present. Sentences like "Can you help me with tomato price", "weather at my location", and "thank you, what is the cotton price" route immediately to their domain intents.
+    - **Tier 2 (Pending dialogue answers):** Chilli follow-up accepts ONLY exact short answers ("1", "2", "green", "dry", "పచ్చి", "ఎండు", "हरी", "सूखी") when $\le 3$ words; otherwise treats the message as a fresh question and clears state.
+    - **Tier 3 (Conversational metadata):** Capabilities, location, small talk (thanks, ok, bye), and greeting apply ONLY to short messages ($\le 6$ words) that contain ZERO domain words.
+    - **Tier 4 (Fallback):** Unsupported / unclear.
+  - **4. Table-Driven Test Suite (`backend/tests/unit/test_router_hardening.py`):**
+    - 6 reproduction unit tests for each reported bug.
+    - 84 table-driven parameterized cases covering realistic farmer queries across Telugu (`te-IN`), Hindi (`hi-IN`), English (`en-IN`), and Hinglish (`hi-en`).
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_router_hardening.py`: 90 passed in 9.17s.
+  - `pytest backend/tests/unit/`: 198 passed, 0 failed in 21.19s.
+  - `ruff check backend/ scripts/`: All checks passed (0 errors).
+  - `python scripts/scan_secrets.py`: [OK] CLEAN: No exposed secrets detected.
+- **Tests:** 198 passed, 0 failed.
 
 ### [2026-11-06 21:00] Phase 3D: Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, and Speech Quality
 - **Goal and phase:** Phase 3D (Fix pass from live Telegram tests and open items from previous review). Centralized all user strings into `messages.py`, eliminated all Indic script literals outside `messages.py`, fixed the Mandi cache persistence bug without explicit cache, handled live conversation screenshot edge-cases (small talk, pending crop state, standalone crop query), harmonized speech quality/dates, rejected sub-second audio, and prefetched live pilot mandi records.

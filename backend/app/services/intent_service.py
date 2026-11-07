@@ -42,7 +42,8 @@ LATIN_RANGE_REGEX = re.compile(r"[a-zA-Z]")
 HINGLISH_WORDS = {
     "kya", "hai", "ka", "ki", "ke", "ko", "bhav", "dam", "mandi", "namaste",
     "aap", "mujhe", "batao", "batayein", "kripya", "nahi", "kaise", "chahiye",
-    "kitna", "kitni", "crop", "fasal", "mein", "se", "aur", "ye", "yeh", "kahan"
+    "kitna", "kitni", "crop", "fasal", "mein", "se", "aur", "ye", "yeh", "kahan",
+    "ji", "kal", "barish", "theek", "dhanyavad", "alvida", "mera", "meri", "kaisa"
 }
 
 
@@ -70,12 +71,46 @@ def detect_text_language(text: str) -> str:
     return "te-IN"
 
 
-def _match_district(text: str) -> str | None:
-    """Matches text against known Telangana districts."""
-    cleaned = text.lower()
+def _matches_kw(kw: str, text: str, tokens_list: list[str]) -> bool:
+    """Matches a keyword against text adhering to script-specific boundary rules:
+    - Latin keywords match as whole words using regex word boundaries (\\b...\\b).
+    - Indic keywords match as whole tokens (single-word) or exact phrase token sequences (multi-word).
+    """
+    clean_kw = kw.strip()
+    if not clean_kw:
+        return False
+    is_latin = bool(LATIN_RANGE_REGEX.search(clean_kw)) or clean_kw.isdigit()
+    if is_latin:
+        kw_parts = clean_kw.split()
+        pattern = r"\b" + r"\s+".join(re.escape(w) for w in kw_parts) + r"\b"
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    else:
+        kw_tokens = clean_kw.split()
+        if len(kw_tokens) == 1:
+            return kw_tokens[0] in tokens_list
+        else:
+            n = len(kw_tokens)
+            return any(tokens_list[i : i + n] == kw_tokens for i in range(len(tokens_list) - n + 1))
+
+
+def _has_any(keywords: set[str] | list[str], text: str, tokens_list: list[str]) -> bool:
+    """Checks whether any keyword in the set matches text using script-safe boundaries."""
+    return any(_matches_kw(k, text, tokens_list) for k in keywords)
+
+
+def _match_district(text: str, tokens_list: list[str] | None = None) -> str | None:
+    """Matches text against known Telangana districts using boundary-safe matching."""
+    if not text:
+        return None
+    if tokens_list is None:
+        tokens_list = [w.strip(".,?!;:'\"()[]{}") for w in text.split() if w.strip(".,?!;:'\"()[]{}")]
     for word, canonical in KNOWN_DISTRICTS.items():
-        if word in cleaned:
-            return canonical
+        if re.search(r"[a-zA-Z]", word):
+            if bool(re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE)):
+                return canonical
+        else:
+            if any(t == word or (len(word) >= 3 and t.startswith(word)) for t in tokens_list):
+                return canonical
     return None
 
 
@@ -86,103 +121,61 @@ def extract_intent(
     dialogue_repo: DialogueStateRepository | None = None,
     enable_crop_advisory: bool = False,
 ) -> ParsedIntent:
-    """Extracts user intent and slots, resolving against dialogue state if clarification pending."""
+    """Extracts user intent and slots, resolving against dialogue state if clarification pending.
+
+    Precedence order:
+    1. Strong domain intents (Weather, Mandi Price, Crop Advisory).
+    2. Pending dialogue answers (short chilli answer, pending slot).
+    3. Metadata / conversational intents (Small talk, Capabilities, Location, Greeting),
+       which apply ONLY to short messages (<= 6 tokens) that contain no domain words.
+    4. Fallback to unsupported.
+    """
     clean_text = text.strip()
-    words = [w for w in re.split(r"[\s,?!.]+", clean_text) if w]
-    lower_text = clean_text.lower()
+    raw_words = clean_text.split()
+    tokens = [w.strip(".,?!;:'\"()[]{}") for w in raw_words if w.strip(".,?!;:'\"()[]{}")]
 
     # Check active dialogue state for this user (10-minute TTL)
     previous_state: dict[str, Any] | None = None
     if user_hash and dialogue_repo:
         previous_state = dialogue_repo.get_state(user_hash, ttl_seconds=600)
 
-    # 1. Small talk: Thanks, OK, Bye
-    if any(k in lower_text for k in THANKS_KEYWORDS):
-        if user_hash and dialogue_repo:
-            dialogue_repo.clear_state(user_hash)
-        return ParsedIntent(
-            intent=IntentType.SMALL_TALK,
-            language=language,
-            small_talk_type="thanks",
-        )
+    # 1. Domain keyword extraction
+    has_weather_kw = _has_any(WEATHER_KEYWORDS, clean_text, tokens)
+    has_price_kw = _has_any(PRICE_KEYWORDS, clean_text, tokens)
+    has_crop_kw = _has_any(CROP_ADVISORY_KEYWORDS, clean_text, tokens)
+    matched_district = _match_district(clean_text, tokens)
 
-    if any(k == lower_text or k in words for k in OK_KEYWORDS) and len(words) <= 3:
-        if user_hash and dialogue_repo:
-            dialogue_repo.clear_state(user_hash)
-        return ParsedIntent(
-            intent=IntentType.SMALL_TALK,
-            language=language,
-            small_talk_type="ok",
-        )
-
-    if any(k == lower_text or k in words for k in BYE_KEYWORDS) and len(words) <= 3:
-        if user_hash and dialogue_repo:
-            dialogue_repo.clear_state(user_hash)
-        return ParsedIntent(
-            intent=IntentType.SMALL_TALK,
-            language=language,
-            small_talk_type="bye",
-        )
-
-    # 2. Capabilities query ("what can you do")
-    if any(k in lower_text for k in CAPABILITIES_KEYWORDS):
-        return ParsedIntent(
-            intent=IntentType.CAPABILITIES_QUERY,
-            language=language,
-        )
-
-    # 3. Location query ("what's my location?")
-    if any(k in lower_text for k in LOCATION_KEYWORDS):
-        return ParsedIntent(
-            intent=IntentType.LOCATION_QUERY,
-            language=language,
-        )
-
-    # 4. Greeting: ONLY when message is short (<= 4 words) and has no other query/content
-    has_greeting_kw = any(k in lower_text for k in GREETING_KEYWORDS)
-    has_price_kw = any(p in clean_text for p in PRICE_KEYWORDS)
-
-    if has_greeting_kw and len(words) <= 4 and not has_price_kw:
-        # Check if there is a commodity or district mention
-        has_commodity = any(resolve_commodity(w) is not None for w in words)
-        has_district = _match_district(clean_text) is not None
-        if not has_commodity and not has_district:
-            return ParsedIntent(
-                intent=IntentType.GREETING_OR_HELP,
-                language=language,
-                slots=IntentSlots(),
-                clarification_needed=False,
-            )
-
-    # 5. Check for ambiguous chilli query or chilli disambiguation follow-up from previous state
-    clarification_type: str | None = None
+    # Commodity resolution
     matched_commodity: str | None = None
+    clarification_type: str | None = None
+    is_chilli = is_ambiguous_chilli(clean_text)
 
-    if previous_state and previous_state.get("clarification_type") == "chilli_type":
-        if any(g in lower_text for g in CHILLI_GREEN_TOKENS):
+    if is_chilli:
+        if _has_any(CHILLI_GREEN_TOKENS, clean_text, tokens):
             matched_commodity = "Green Chilli"
-        elif any(d in lower_text for d in CHILLI_DRY_TOKENS):
-            matched_commodity = "Dry Chillies"
-        else:
-            clarification_type = "chilli_type"
-    elif is_ambiguous_chilli(clean_text):
-        if any(g in lower_text for g in CHILLI_GREEN_TOKENS):
-            matched_commodity = "Green Chilli"
-        elif any(d in lower_text for d in CHILLI_DRY_TOKENS):
+        elif _has_any(CHILLI_DRY_TOKENS, clean_text, tokens):
             matched_commodity = "Dry Chillies"
         else:
             clarification_type = "chilli_type"
 
-    # 6. Check for weather query if not in an active chilli or mandi follow-up
-    is_weather = False
-    if not (previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY and previous_state.get("clarification_type") == "chilli_type"):
-        for kw in WEATHER_KEYWORDS:
-            if kw in words or (len(kw) > 4 and kw in lower_text):
-                is_weather = True
+    if not matched_commodity and not clarification_type:
+        for tok in tokens:
+            res = resolve_commodity(tok)
+            if res:
+                matched_commodity = res
                 break
+        if not matched_commodity:
+            matched_commodity = resolve_commodity(clean_text)
 
-    if is_weather:
-        matched_dist = _match_district(clean_text)
+    has_commodity = (matched_commodity is not None) or is_chilli
+
+    # =========================================================================
+    # PRECEDENCE 1: Strong domain queries (Weather, Mandi Price, Crop Advisory)
+    # =========================================================================
+
+    # 1A. Weather Intent (e.g. "weather at my location", "rain in Warangal")
+    if has_weather_kw:
+        matched_dist = matched_district
         if not matched_dist and previous_state and previous_state.get("slots", {}).get("district"):
             matched_dist = previous_state["slots"]["district"]
         if user_hash and dialogue_repo:
@@ -194,123 +187,211 @@ def extract_intent(
             clarification_needed=False,
         )
 
-    # 7. Standard commodity resolution if not already resolved as chilli
-    if not matched_commodity and not clarification_type:
-        for token in re.split(r"[\s,?!.]+", clean_text):
-            if token:
-                res = resolve_commodity(token)
-                if res:
-                    matched_commodity = res
-                    break
-
-        if not matched_commodity:
-            matched_commodity = resolve_commodity(clean_text)
-
-    # 8. District extraction
-    matched_district = _match_district(clean_text)
-
-    # 9. Multi-turn dialogue slot merging
-    if previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY:
-        prev_slots = previous_state.get("slots", {})
-        if not matched_commodity and prev_slots.get("commodity"):
-            matched_commodity = prev_slots["commodity"]
-        if not matched_district and prev_slots.get("district"):
-            matched_district = prev_slots["district"]
-
-    # Check for crop advisory keywords
-    has_crop_kw = any(ck in lower_text for ck in CROP_ADVISORY_KEYWORDS)
-
-    # 10. Standalone short commodity query (Item C.2):
-    # If message is short (<= 3 words) and is ONLY a known commodity name (not crop problem/advisory),
-    # it is a mandi price query for pilot district Warangal
-    is_standalone_commodity = False
-    if matched_commodity and len(words) <= 3 and not has_price_kw and not clarification_type and not has_crop_kw:
-        is_standalone_commodity = True
-
-    # 11. Determine if this is a mandi query
-    is_mandi = (
-        has_price_kw
-        or is_ambiguous_chilli(clean_text)
-        or is_standalone_commodity
-        or (previous_state and previous_state.get("intent") == IntentType.MANDI_PRICE_QUERY)
+    # 1B. Mandi Price Intent
+    is_standalone_commodity = bool(
+        matched_commodity
+        and len(tokens) <= 3
+        and not has_price_kw
+        and not has_crop_kw
+        and not clarification_type
     )
 
-    if not is_mandi:
-        # Check for crop advisory query
-        if has_crop_kw and enable_crop_advisory:
+    is_mandi_domain = (
+        (has_commodity and has_price_kw)
+        or is_chilli
+        or has_price_kw
+        or is_standalone_commodity
+    )
 
-            resolved_crop = matched_commodity
-            if not resolved_crop:
-                for token in re.split(r"[\s,?!.]+", clean_text):
-                    if token:
-                        c = resolve_commodity(token)
-                        if c:
-                            resolved_crop = c
-                            break
-            missing_crop = ["crop"] if not resolved_crop else []
+    if is_mandi_domain:
+        is_assumed_district = False
+        if not matched_district and matched_commodity and not clarification_type:
+            matched_district = "Warangal"
+            is_assumed_district = True
+
+        slots = IntentSlots(
+            commodity=matched_commodity,
+            district=matched_district,
+            state="Telangana",
+        )
+        missing = []
+        if not matched_commodity:
+            missing.append("commodity")
+
+        clarification_needed = len(missing) > 0 or (clarification_type is not None)
+
+        if clarification_needed and user_hash and dialogue_repo:
+            dialogue_repo.set_state(
+                user_hash,
+                {
+                    "intent": IntentType.MANDI_PRICE_QUERY,
+                    "slots": slots.model_dump(),
+                    "missing": missing,
+                    "clarification_type": clarification_type or "missing_commodity",
+                    "pending_slot": "commodity",
+                },
+            )
+        elif not clarification_needed and user_hash and dialogue_repo:
+            dialogue_repo.clear_state(user_hash)
+
+        return ParsedIntent(
+            intent=IntentType.MANDI_PRICE_QUERY,
+            language=language,
+            slots=slots,
+            missing_required_slots=missing,
+            clarification_needed=clarification_needed,
+            clarification_type=clarification_type or ("missing_commodity" if missing else None),
+            is_assumed_district=is_assumed_district,
+        )
+
+    # 1C. Crop Advisory Intent
+    if has_crop_kw and not has_price_kw:
+        if enable_crop_advisory:
+            missing_crop = ["crop"] if not matched_commodity else []
             return ParsedIntent(
                 intent=IntentType.CROP_ADVISORY_QUERY,
                 language=language,
                 slots=IntentSlots(
-                    crop=resolved_crop,
-                    commodity=resolved_crop,
+                    crop=matched_commodity,
+                    commodity=matched_commodity,
                     district=matched_district,
                     state="Telangana",
                 ),
                 missing_required_slots=missing_crop,
                 clarification_needed=len(missing_crop) > 0,
             )
+        else:
+            return ParsedIntent(
+                intent=IntentType.UNSUPPORTED_OR_UNCLEAR,
+                language=language,
+                slots=IntentSlots(),
+                clarification_needed=False,
+            )
 
-        return ParsedIntent(
-            intent=IntentType.UNSUPPORTED_OR_UNCLEAR,
-            language=language,
-            slots=IntentSlots(),
-            clarification_needed=False,
-        )
+    # =========================================================================
+    # PRECEDENCE 2: Pending dialogue answers
+    # =========================================================================
+    if previous_state:
+        # 2A. Chilli Disambiguation Follow-up
+        if previous_state.get("clarification_type") == "chilli_type":
+            # Exact answer only when message is short (<= 3 tokens)
+            if len(tokens) <= 3:
+                if _has_any(CHILLI_GREEN_TOKENS, clean_text, tokens):
+                    prev_dist = previous_state.get("slots", {}).get("district", "Warangal")
+                    if user_hash and dialogue_repo:
+                        dialogue_repo.clear_state(user_hash)
+                    return ParsedIntent(
+                        intent=IntentType.MANDI_PRICE_QUERY,
+                        language=language,
+                        slots=IntentSlots(commodity="Green Chilli", district=prev_dist, state="Telangana"),
+                        clarification_needed=False,
+                    )
+                elif _has_any(CHILLI_DRY_TOKENS, clean_text, tokens):
+                    prev_dist = previous_state.get("slots", {}).get("district", "Warangal")
+                    if user_hash and dialogue_repo:
+                        dialogue_repo.clear_state(user_hash)
+                    return ParsedIntent(
+                        intent=IntentType.MANDI_PRICE_QUERY,
+                        language=language,
+                        slots=IntentSlots(commodity="Dry Chillies", district=prev_dist, state="Telangana"),
+                        clarification_needed=False,
+                    )
+            # If not a short exact chilli answer, treat as new query and clear old chilli state
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
 
-    # When district is not explicitly stated in a standalone query or query without district,
-    # assume pilot district Warangal (Item C.2)
-    is_assumed_district = False
-    if not matched_district and matched_commodity and not clarification_type:
-        matched_district = "Warangal"
-        is_assumed_district = True
+        # 2B. Pending slot resolution (e.g. "which crop?" follow-up)
+        elif previous_state.get("pending_slot") == "commodity" and matched_commodity:
+            prev_dist = previous_state.get("slots", {}).get("district", "Warangal")
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.MANDI_PRICE_QUERY,
+                language=language,
+                slots=IntentSlots(commodity=matched_commodity, district=prev_dist, state="Telangana"),
+                clarification_needed=False,
+                is_assumed_district=True,
+            )
 
-    slots = IntentSlots(
-        commodity=matched_commodity,
-        district=matched_district,
-        state="Telangana",
-    )
+        # 2C. Pending district resolution
+        elif previous_state.get("pending_slot") == "district" and matched_district:
+            prev_comm = previous_state.get("slots", {}).get("commodity")
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.MANDI_PRICE_QUERY,
+                language=language,
+                slots=IntentSlots(commodity=prev_comm, district=matched_district, state="Telangana"),
+                clarification_needed=False,
+            )
 
-    missing = []
-    if not matched_commodity:
-        missing.append("commodity")
+    # =========================================================================
+    # PRECEDENCE 3: Capabilities, Location, Small Talk, Greeting
+    # Apply ONLY to short messages (<= 6 tokens) that contain no domain words.
+    # =========================================================================
+    is_short = len(tokens) <= 6
+    no_domain_words = (not has_commodity) and (not has_price_kw) and (not has_weather_kw) and (not has_crop_kw)
 
-    clarification_needed = len(missing) > 0 or (clarification_type is not None)
+    if is_short and no_domain_words:
+        # 3A. Small Talk (Thanks, OK, Bye)
+        if _has_any(THANKS_KEYWORDS, clean_text, tokens):
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.SMALL_TALK,
+                language=language,
+                small_talk_type="thanks",
+            )
 
-    # Save state if clarification is needed
-    if clarification_needed and user_hash and dialogue_repo:
-        dialogue_repo.set_state(
-            user_hash,
-            {
-                "intent": IntentType.MANDI_PRICE_QUERY,
-                "slots": slots.model_dump(),
-                "missing": missing,
-                "clarification_type": clarification_type or "missing_commodity",
-                "pending_slot": "commodity",
-            },
-        )
-    elif not clarification_needed and user_hash and dialogue_repo:
-        # Clarification complete, clear state
-        dialogue_repo.clear_state(user_hash)
+        if _has_any(OK_KEYWORDS, clean_text, tokens):
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.SMALL_TALK,
+                language=language,
+                small_talk_type="ok",
+            )
 
+        if _has_any(BYE_KEYWORDS, clean_text, tokens):
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.SMALL_TALK,
+                language=language,
+                small_talk_type="bye",
+            )
+
+        # 3B. Capabilities Query
+        if _has_any(CAPABILITIES_KEYWORDS, clean_text, tokens):
+            return ParsedIntent(
+                intent=IntentType.CAPABILITIES_QUERY,
+                language=language,
+            )
+
+        # 3C. Location Query
+        if _has_any(LOCATION_KEYWORDS, clean_text, tokens):
+            return ParsedIntent(
+                intent=IntentType.LOCATION_QUERY,
+                language=language,
+            )
+
+        # 3D. Greeting (strictly <= 4 words)
+        if len(tokens) <= 4 and _has_any(GREETING_KEYWORDS, clean_text, tokens):
+            return ParsedIntent(
+                intent=IntentType.GREETING_OR_HELP,
+                language=language,
+                slots=IntentSlots(),
+                clarification_needed=False,
+            )
+
+    # =========================================================================
+    # PRECEDENCE 4: Fallback
+    # =========================================================================
     return ParsedIntent(
-        intent=IntentType.MANDI_PRICE_QUERY,
+        intent=IntentType.UNSUPPORTED_OR_UNCLEAR,
         language=language,
-        slots=slots,
-        missing_required_slots=missing,
-        clarification_needed=clarification_needed,
-        clarification_type=clarification_type,
-        is_assumed_district=is_assumed_district,
+        slots=IntentSlots(),
+        clarification_needed=False,
     )
 
 
