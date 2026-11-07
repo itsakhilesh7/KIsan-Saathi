@@ -282,10 +282,17 @@ MESSAGES: dict[str, dict[str, str]] = {
 
     # Audio exceeding maximum duration limit
     "audio_too_long": {
-        "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 60 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.",
-        "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम 60 सेकंड)। कृपया छोटा संदेश भेजें।",
-        "en-IN": "Voice note is too long (maximum 60 seconds). Please send a shorter audio message.",
-        "hi-en": "Voice note zyada lamba hai (limit 60 seconds). Please chhota audio message bhejein.",
+        "te-IN": "వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి దాటింది). దయచేసి చిన్న సందేశాన్ని పంపండి.",
+        "hi-IN": "वॉयस नोट बहुत लंबा है (अधिकतम सीमा पार)। कृपया छोटा संदेश भेजें।",
+        "en-IN": "Voice note is too long (limit exceeded). Please send a shorter audio message.",
+        "hi-en": "Voice note zyada lamba hai (limit exceeded). Please chhota audio message bhejein.",
+    },
+    # Voice rate limit exceeded (daily per-user or global)
+    "voice_limit_reached": {
+        "te-IN": "ఈ రోజుకు వాయిస్ డెమో పరిమితి ముగిసింది. దయచేసి రేపు మళ్లీ ప్రయత్నించండి లేదా టెక్స్ట్ మెసేజ్ ద్వారా అడగండి.",
+        "hi-IN": "आज के लिए वॉयस डेमो सीमा समाप्त हो गई है। कृपया कल पुनः प्रयास करें या टेक्स्ट संदेश भेजें।",
+        "en-IN": "Voice demo limit reached for today. Please try again tomorrow or send a text message.",
+        "hi-en": "Aaj ke liye voice demo limit khatam ho gayi hai. Please kal try karein ya text message bhejein.",
     },
     # Unsupported media type
     "unsupported_media": {

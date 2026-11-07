@@ -17,10 +17,10 @@ This document presents the complete catalog of strings across **Telugu (`te-IN`)
 | `ai_intro` | `hi-IN` | `नमस्ते, मैं किसान साथी AI सहायक हूँ।` | Centralized template `ai_intro` |
 | `ai_intro` | `en-IN` | `Hello, I am Kisan Saathi, your AI farming assistant.` | Centralized template `ai_intro` |
 | `ai_intro` | `hi-en` | `Namaste, main Kisan Saathi AI assistant hoon.` | Centralized template `ai_intro` |
-| `audio_too_long` | `te-IN` | `వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి 60 సెకన్లు). దయచేసి చిన్న సందేశాన్ని పంపండి.` | Centralized template `audio_too_long` |
-| `audio_too_long` | `hi-IN` | `वॉयस नोट बहुत लंबा है (अधिकतम 60 सेकंड)। कृपया छोटा संदेश भेजें।` | Centralized template `audio_too_long` |
-| `audio_too_long` | `en-IN` | `Voice note is too long (maximum 60 seconds). Please send a shorter audio message.` | Centralized template `audio_too_long` |
-| `audio_too_long` | `hi-en` | `Voice note zyada lamba hai (limit 60 seconds). Please chhota audio message bhejein.` | Centralized template `audio_too_long` |
+| `audio_too_long` | `te-IN` | `వాయిస్ నోట్ చాలా పెద్దదిగా ఉంది (పరిమితి దాటింది). దయచేసి చిన్న సందేశాన్ని పంపండి.` | Centralized template `audio_too_long` |
+| `audio_too_long` | `hi-IN` | `वॉयस नोट बहुत लंबा है (अधिकतम सीमा पार)। कृपया छोटा संदेश भेजें।` | Centralized template `audio_too_long` |
+| `audio_too_long` | `en-IN` | `Voice note is too long (limit exceeded). Please send a shorter audio message.` | Centralized template `audio_too_long` |
+| `audio_too_long` | `hi-en` | `Voice note zyada lamba hai (limit exceeded). Please chhota audio message bhejein.` | Centralized template `audio_too_long` |
 | `capabilities_query` | `te-IN` | `నేను పంటల తాజా మండి ధరలు మరియు 3 రోజుల వాతావరణ సమాచారాన్ని అందించగలను. పంట సలహాలు త్వరలో రానున్నాయి.` | Centralized template `capabilities_query` |
 | `capabilities_query` | `hi-IN` | `मैं फसलों के ताजा मंडी भाव और 3 दिनों के मौसम पूर्वानुमान की जानकारी दे सकता हूँ। फसल सलाह जल्द आ रही है।` | Centralized template `capabilities_query` |
 | `capabilities_query` | `en-IN` | `I can help with live mandi crop prices and 3-day weather forecasts. Crop advisory features are coming soon.` | Centralized template `capabilities_query` |
@@ -165,6 +165,10 @@ This document presents the complete catalog of strings across **Telugu (`te-IN`)
 | `unsupported_media` | `hi-IN` | `सहायता के लिए कृपया वॉयस संदेश या टेक्स्ट मैसेज भेजें।` | Centralized template `unsupported_media` |
 | `unsupported_media` | `en-IN` | `Please send a voice note or a text message for assistance.` | Centralized template `unsupported_media` |
 | `unsupported_media` | `hi-en` | `Help ke liye please audio voice note ya text message bhejein.` | Centralized template `unsupported_media` |
+| `voice_limit_reached` | `te-IN` | `ఈ రోజుకు వాయిస్ డెమో పరిమితి ముగిసింది. దయచేసి రేపు మళ్లీ ప్రయత్నించండి లేదా టెక్స్ట్ మెసేజ్ ద్వారా అడగండి.` | Centralized template `voice_limit_reached` |
+| `voice_limit_reached` | `hi-IN` | `आज के लिए वॉयस डेमो सीमा समाप्त हो गई है। कृपया कल पुनः प्रयास करें या टेक्स्ट संदेश भेजें।` | Centralized template `voice_limit_reached` |
+| `voice_limit_reached` | `en-IN` | `Voice demo limit reached for today. Please try again tomorrow or send a text message.` | Centralized template `voice_limit_reached` |
+| `voice_limit_reached` | `hi-en` | `Aaj ke liye voice demo limit khatam ho gayi hai. Please kal try karein ya text message bhejein.` | Centralized template `voice_limit_reached` |
 | `weather_forecast` | `te-IN` | `వాతావరణ సూచన ప్రకారం, {district}లో {date0} గరిష్ట ఉష్ణోగ్రత {max0}°C, కనిష్ట ఉష్ణోగ్రత {min0}°C గా నమోదయ్యే అవకాశం ఉంది మరియు వర్షం పడే అవకాశం {rain0}% గా ఉంది. రాబోయే రెండు రోజుల్లో వర్షం పడే అవకాశం దాదాపు {rain_next}% వరకు ఉండవచ్చు. వాతావరణ పరిస్థితులను బట్టి మీ వ్యవసాయ పనులను తగిన జాగ్రత్తలతో ప్లాన్ చేసుకోండి.` | Centralized template `weather_forecast` |
 | `weather_forecast` | `hi-IN` | `मौसम पूर्वानुमान के अनुसार, {district} में {date0} अधिकतम तापमान {max0}°C और न्यूनतम तापमान {min0}°C रहने का अनुमान है, तथा वर्षा की संभावना {rain0}% है। अगले दो दिनों में बारिश की संभावना लगभग {rain_next}% तक रह सकती है। मौसम की स्थिति को देखते हुए अपने कृषि कार्यों की उचित योजना बनाएं।` | Centralized template `weather_forecast` |
 | `weather_forecast` | `en-IN` | `According to the weather forecast, {district} on {date0} is expected to have a maximum temperature of {max0}°C, a minimum of {min0}°C, and a {rain0}% chance of rain. Over the next two days, the chance of rain may reach approximately {rain_next}%. Please plan your field operations carefully based on local weather conditions.` | Centralized template `weather_forecast` |

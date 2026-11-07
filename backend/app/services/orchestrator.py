@@ -25,6 +25,7 @@ from ..integrations.llm.openai_compatible import OpenAICompatibleLLM
 from ..integrations.weather.open_meteo import fetch_weather_forecast
 from ..repositories.dialogue_state import DialogueStateRepository
 from ..repositories.events import EventRepository
+from ..repositories.usage_limits import SQLiteUsageLimitsRepository
 from ..repositories.user_preferences import SQLiteUserPreferencesRepository
 from ..schemas.intent import IntentType
 from . import audio_service
@@ -40,6 +41,21 @@ log = logging.getLogger("orchestrator")
 _event_repo: EventRepository | None = None
 _user_pref_repo: SQLiteUserPreferencesRepository | None = None
 _dialogue_repo: DialogueStateRepository | None = None
+_usage_limits_repo: SQLiteUsageLimitsRepository | None = None
+
+
+def get_usage_limits_repo() -> SQLiteUsageLimitsRepository:
+    """Returns the usage limits repository instance, lazily initializing if needed."""
+    global _usage_limits_repo
+    if _usage_limits_repo is None:
+        _usage_limits_repo = SQLiteUsageLimitsRepository()
+    return _usage_limits_repo
+
+
+def set_usage_limits_repo(repo: SQLiteUsageLimitsRepository | None) -> None:
+    """Allows tests to inject a temporary usage limits repository."""
+    global _usage_limits_repo
+    _usage_limits_repo = repo
 
 
 def get_event_repo() -> EventRepository:
@@ -146,8 +162,13 @@ async def handle_voice_message(
             duration = await asyncio.to_thread(audio_service.get_duration, in_wav)
             fallback_lang = _resolve_user_language(phone_hash, None, settings)
 
-            if duration > settings.AUDIO_MAX_SECONDS:
-                log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, settings.AUDIO_MAX_SECONDS, phone_hash)
+            effective_max_voice = (
+                settings.PUBLIC_VOICE_MAX_SECONDS
+                if settings.PUBLIC_VOICE_MAX_SECONDS > 0
+                else settings.AUDIO_MAX_SECONDS
+            )
+            if duration > effective_max_voice:
+                log.warning("Voice note duration (%.1fs) exceeds limit (%ds) for user=%s", duration, effective_max_voice, phone_hash)
                 too_long_msg = get_message("audio_too_long", fallback_lang)
                 await channel.send_text(sender_phone, too_long_msg)
                 await get_event_repo().log_event({
@@ -169,6 +190,29 @@ async def handle_voice_message(
                     "user_hash": phone_hash,
                     "channel": channel.channel_name,
                     "status": "audio_too_short",
+                    "duration": duration,
+                    "timings": timings,
+                })
+                return
+
+            # Check daily voice usage limits to protect Gnani credits
+            admin_set = {h.strip() for h in settings.ADMIN_USER_HASHES.split(",") if h.strip()}
+            allowed, limit_reason = get_usage_limits_repo().check_and_increment(
+                phone_hash,
+                max_user=settings.DAILY_USER_VOICE_LIMIT,
+                max_global=settings.DAILY_GLOBAL_VOICE_LIMIT,
+                admin_hashes=admin_set,
+            )
+            if not allowed:
+                log.warning("Voice rate limit reached (%s) for user=%s", limit_reason, phone_hash)
+                limit_msg = get_message("voice_limit_reached", fallback_lang)
+                await channel.send_text(sender_phone, limit_msg)
+                await get_event_repo().log_event({
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "channel": channel.channel_name,
+                    "status": "rejected_rate_limit",
+                    "reason": limit_reason,
                     "duration": duration,
                     "timings": timings,
                 })

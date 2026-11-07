@@ -78,6 +78,14 @@ class Settings(BaseSettings):
 
     # ---- Telegram (fallback channel per D-002) ----
     TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_PATH: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+
+    # ---- Usage limits ----
+    DAILY_USER_VOICE_LIMIT: int = 10
+    DAILY_GLOBAL_VOICE_LIMIT: int = 200
+    ADMIN_USER_HASHES: str = ""
+    PUBLIC_VOICE_MAX_SECONDS: int = 30
 
     # ---- data.gov.in ----
     DATA_GOV_API_KEY: str = ""
