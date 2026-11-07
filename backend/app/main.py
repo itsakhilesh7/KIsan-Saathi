@@ -7,6 +7,7 @@ Layers:
 - REST API routes (/api/health, /api/voice)
 """
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .api.routes.health import router as health_router
 from .api.routes.voice import router as voice_router
+from .channels.telegram.webhook import router as telegram_router
 from .channels.whatsapp.webhook import router as whatsapp_router
 from .core.config import Settings, get_settings
 from .core.http_client import close_http_client, get_http_client
@@ -51,6 +53,22 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _warmup_mandi_cache(settings: Settings) -> None:
+    """Warms the mandi cache asynchronously in the background at startup without blocking."""
+    if not settings.DATA_GOV_API_KEY.strip():
+        return
+    try:
+        from .integrations.data_gov.mandi import fetch_mandi_prices
+
+        pilot_data = settings.load_pilot_config()
+        district = pilot_data.get("primary", {}).get("district", "Warangal")
+        state = pilot_data.get("primary", {}).get("state", "Telangana")
+        await fetch_mandi_prices(state=state, district=district, settings=settings)
+        log.info("Background mandi cache warmup completed.")
+    except Exception as e:
+        log.warning("Background mandi cache warmup failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context for startup checks and teardown."""
@@ -70,6 +88,10 @@ async def lifespan(app: FastAPI):
             "tts_model": settings.TTS_MODEL,
         },
     )
+
+    # Warm mandi cache asynchronously without blocking startup
+    asyncio.create_task(_warmup_mandi_cache(settings))
+
     yield
     await close_http_client()
     log.info("Kisan Saathi service shutting down")
@@ -99,4 +121,5 @@ app.add_middleware(
 # Route registrations
 app.include_router(health_router)
 app.include_router(whatsapp_router)
+app.include_router(telegram_router)
 app.include_router(voice_router)
