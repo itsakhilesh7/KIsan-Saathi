@@ -1,0 +1,28 @@
+{
+  "experiment": "E1: Prisma STT Noise, Telephone, and WhatsApp Robustness",
+  "date": "2026-11-08T08:42:21.283166+00:00",
+  "git_commit": "78aa91d78c2152ab035f81d5d490e799e0a97d4f",
+  "model_stt": "prisma-v3.0",
+  "mode": "explicit",
+  "suite": "core_minimal",
+  "total_calls": 86,
+  "clip_count": 10,
+  "conditions_count": 10,
+  "conditions": [
+    "clean",
+    "noise_brown_snr10",
+    "noise_brown_snr20",
+    "noise_brown_snr5",
+    "noise_pink_snr10",
+    "noise_pink_snr20",
+    "noise_pink_snr5",
+    "tel_amrnb",
+    "tel_g711",
+    "whatsapp_opus"
+  ],
+  "limits": [
+    "10 clips total (4 Telugu, 4 Hindi, 2 Hinglish).",
+    "Single speaker recording baseline in quiet room.",
+    "Small sample size; results indicate directional robustness across conditions, not population-level benchmark."
+  ]
+}

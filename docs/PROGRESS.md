@@ -9,10 +9,10 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P0 (Access & Audit):** Done.
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
-- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality), and Router Hardening Done (198 unit tests passing).
+- **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality), and Router Hardening Done.
 - **P4 (Crop Q&A + Safety):** Step 3.1 completed (curated advisory document list proposed; awaiting approval).
-- **P5 (Evon, Web Demo, Dashboard):** Not started.
-- **P6 (Evaluation + Deploy):** In Progress. Speech evaluation (`backend/scripts/eval_wer.py` & `backend/scripts/report_wer.py`) verified (Hindi WER 10.12%, Telugu WER 12.40%, Hinglish intent pass).
+- **P5 (Evon, Web Demo, Dashboard):** Phase 5-lite completed (Telegram webhook mode, daily usage caps & quotas, Dockerfile containerization, Render deployment guide).
+- **P6 (Evaluation + Deploy):** In Progress. Experiment E1 (Prisma STT Noise, Telephone, and WhatsApp Robustness) complete with 86 live calls recorded (`evaluation/results/e1_summary_table.md`, `e1_robustness_chart.png`). Unit test suite: **209 tests passing**.
 - **P7 (Hardening & Review):** Done. Centralized user-facing strings into `backend/app/core/messages.py`, zero Indic script literals in `services/` or `channels/`, and generated `docs/WORDING_REVIEW.md`.
 - **P8 (Submission):** Not started.
 
@@ -56,7 +56,34 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
-### [2026-11-07 11:50] Router Hardening: Precedence, Keyword Boundaries, and Table-Driven Verification
+### [2026-11-08 14:15] Evaluation E1: Prisma STT Noise, Telephone, and WhatsApp Robustness Evaluation
+- **Goal and phase:** Phase 6 (Evaluation E1). Measure the acoustic robustness of Gnani Prisma STT v3.0 under clean conditions, additive environmental noise (pink, brown at SNR 20, 10, 5 dB), telephone transmission (G.711 $\mu$-law 8 kHz, AMR-NB 8 kHz), and WhatsApp Opus 24 kbps VOIP compression across user recordings.
+- **What changed:**
+  - **1. Audio Generation (`backend/scripts/build_eval_audio.py`):**
+    - From the 10 farmer recordings in `backend/data/clips/`, generated deterministic test audio across all degradation conditions using exact RMS decibel matching (`10 * log10(P_signal / P_noise)`).
+    - Simulated G.711 $\mu$-law bandlimiting (`pcm_mulaw` at 8 kHz), AMR-NB (`libopencore_amrnb` at 8 kHz), and WhatsApp voice note compression (`libopus` at 24 kbps VOIP mode).
+    - Audio artifacts stored in `backend/data/eval_audio/` (gitignored; never committed).
+  - **2. Evaluation Runner (`backend/scripts/run_eval_e1.py`):**
+    - Executed 86 live STT calls against Gnani Prisma STT v3.0 in explicit language mode (`te-IN` for Telugu, `hi-IN` for Hindi/Hinglish).
+    - Applied identical string normalization (`normalize_text`) to reference and hypothesis transcripts for mathematical WER/CER invariants (WER 0 guarantees CER 0).
+    - Evaluated Hinglish via intent extraction accuracy rather than string-distance WER due to script-mixing differences (Devanagari hypothesis vs Roman reference).
+    - Incremental per-call flushing to `evaluation/results/e1_per_clip.csv` allowing resume on interrupted runs.
+  - **3. Artifacts Generated in `evaluation/results/`:**
+    - `e1_per_clip.csv`: 86 rows of raw evaluations with WER, CER, hypotheses, and intent classifications.
+    - `e1_summary_table.md`: Mean WER and CER by language $\times$ condition.
+    - `e1_robustness_chart.png`: High-resolution comparative bar chart.
+    - `RUN_INFO.json`: Metadata with timestamp, git commit, model version, and explicit limitations.
+  - **4. Key Evaluation Results:**
+    - **Telugu (n=4 clips):** Clean Mean WER **12.40%** (CER 3.89%). Heavy 5 dB pink noise increased WER by only 4.19 percentage points to **16.59%** (CER 4.87%). Brown noise at 5 dB remained at **12.40%** (CER 3.89%). Telephony G.711: **16.59%**; AMR-NB: **14.32%**; WhatsApp Opus: **14.32%**.
+    - **Hindi (n=4 clips):** Clean Mean WER **12.68%** (CER 6.21%). Heavy 5 dB pink noise: **19.28%** (CER 10.44%). Brown noise at 5 dB: **13.93%** (CER 7.37%). Telephony G.711: **15.18%**; AMR-NB: **15.24%**; WhatsApp Opus: **11.43%** (WER improved over clean baseline due to high-frequency de-noising in Opus encoder).
+    - **Hinglish (n=2 clips):** Intent accuracy: **50.0%** across clean, pink 10 dB, and telephony G.711.
+  - **5. Limitations Explicitly Stated:** 10 clips total, single speaker, quiet room baseline. Small sample size indicates directional robustness across transmission channels and noise floors rather than population-level demographic benchmarks.
+- **Commands run and their real results:**
+  - `python -m backend.scripts.run_eval_e1 --suite core_minimal`: 86 calls executed successfully (HTTP 200).
+  - `pytest backend/tests/unit/`: 209 passed, 0 failed in 17.48s.
+  - `ruff check backend/ scripts/`: All checks passed (0 errors).
+  - `python scripts/scan_secrets.py`: [OK] CLEAN: No exposed secrets detected.
+- **Tests:** 209 passed, 0 failed.
 - **Goal and phase:** Router hardening for `intent_service.py`, `keywords.py`, and `commodity_resolver.py`. Test-first; reproduced all 3 user-reported bugs with failing unit tests, implemented strict whole-word/exact-token matching, established 4-tier precedence, added exact short chilli disambiguation follow-up, and verified across a 90-case test suite including >50 table-driven realistic utterances.
 - **What changed:**
   - **1. "नमस्ते" Bug Fixed:** Removed `"नमस्ते"` from `BYE_KEYWORDS` in `backend/app/core/keywords.py`. A Hindi hello is now correctly classified as `GREETING_OR_HELP`, never as `SMALL_TALK` bye.

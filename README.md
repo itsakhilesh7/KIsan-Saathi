@@ -192,11 +192,12 @@ python -m backend.scripts.eval_wer --csv backend/data/transcripts.csv
 Kisan Saathi is fully hardened, containerized, and deployable for public pilot testing under strict safety constraints (`rules.md`).
 
 ### Test Suite Status
-- **Unit Tests Passing:** **205 passed**, 0 failed, 0 warnings/errors (ran in ~30s).
+- **Unit Tests Passing:** **209 passed**, 0 failed, 0 warnings/errors (ran in ~18s).
 - **Fast-Fail Timeout Protection:** `pytest-timeout` configured at 60s per test in `pyproject.toml`.
 - **Wording Single Source of Truth:** 100% of user-visible strings across Telugu, Hindi, English, and Hinglish are centralized in `backend/app/core/messages.py`. Zero Indic script literals permitted in `services/` or `channels/`.
 - **Settings Parity:** Guaranteed 1:1 key and default matching between `Settings` and `.env.example`.
 - **Secret Hygiene:** Working tree and Git commit history clean (verified with `python scripts/scan_secrets.py`).
+- **Prisma Robustness Evaluation (E1):** 86 live STT calls across noise (pink, brown at SNR 20, 10, 5 dB), telephony (G.711 $\mu$-law, AMR-NB), and WhatsApp Opus compression documented in `evaluation/results/e1_summary_table.md`.
 
 ### Live vs Mocked Components
 
@@ -239,6 +240,7 @@ python -m backend.scripts.run_telegram_polling
 
 ## 6. Project Documentation & Audit Trail
 
+- **[evaluation/results/e1_summary_table.md](evaluation/results/e1_summary_table.md)** - Experiment E1: Prisma STT Noise, Telephone, and WhatsApp Robustness results.
 - **[docs/DEPLOY.md](docs/DEPLOY.md)** - Render and Railway deployment guide and ephemeral disk note.
 - **[docs/PROGRESS.md](docs/PROGRESS.md)** - Chronological development log across all phases.
 - **[docs/WORDING_REVIEW.md](docs/WORDING_REVIEW.md)** - Auto-generated linguistic audit of all 42 bot prompts.

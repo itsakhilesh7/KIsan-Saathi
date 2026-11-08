@@ -34,6 +34,8 @@ recordings/
 backend/data/raw/
 backend/data/index/
 backend/data/clips/
+backend/data/eval_audio/
+backend/data/noise/
 data/*.sqlite*
 *.wav
 *.mp3
