@@ -12,6 +12,8 @@ ALLOWED_AUDIO_MIMES = {
     "audio/opus",
     "audio/wav",
     "audio/x-wav",
+    "audio/webm",
+    "audio/webm; codecs=opus",
     "audio/mpeg",
     "audio/mp3",
     "audio/aac",

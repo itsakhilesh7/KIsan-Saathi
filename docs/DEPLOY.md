@@ -117,3 +117,64 @@ python -m backend.scripts.run_telegram_polling
 >   - Daily voice counters reset on restart.
 > 
 > If persistent state across redeploys is required for production, attach a **Persistent Disk** mounted at `/app/data` in Render/Railway service settings.
+
+---
+
+## 6. Deploying Streamlit Web Demo on Streamlit Community Cloud
+
+The repository includes an interactive web demo at `frontend_streamlit/app.py` providing microphone recording (`st.audio_input`), text questions, real-time audio playback, structured evidence cards, and model provenance disclosure.
+
+### Streamlit Community Cloud Resource Limits & Specifications
+- **Compute & Memory:** 1 vCPU, 1 GB RAM (Free Tier).
+- **Inactivity Sleep:** Apps automatically sleep after several days of inactivity; waking up takes ~10 seconds on first request.
+- **Ephemeral Container:** Like Render/Railway, local SQLite files (`data/`) reset on restart.
+
+### Installing FFmpeg via `packages.txt`
+Streamlit Community Cloud runs on Debian Linux and reads `packages.txt` to install system apt packages before pip installs dependencies:
+- A `packages.txt` file containing `ffmpeg` is present at both repository root and `frontend_streamlit/packages.txt`.
+- This ensures system binaries `ffmpeg` and `ffprobe` are automatically installed via `apt-get` on build, which is required for 16kHz WAV conversion and WhatsApp-compatible OGG/Opus voice playback.
+
+### Server-Side Secrets Configuration
+In your Streamlit Cloud app settings (**App settings** $\rightarrow$ **Secrets**), paste the required server-side secrets in TOML format:
+
+```toml
+# Core & Security
+APP_ENV = "production"
+PHONE_HASH_SALT = "your_long_random_salt_here"
+ALLOW_CHEMICAL_DETAILS = false
+
+# Voice & Data Providers
+GNANI_API_KEY = "vach_..."
+DATA_GOV_API_KEY = "579b..."
+DATA_GOV_BASE_URL = "https://api.data.gov.in/resource"
+MANDI_RESOURCE_ID = "9ef84268-d588-465a-a308-a864a43d0070"
+
+# LLM & Embeddings (Google AI Studio)
+LLM_PROVIDER = "openai_compatible"
+LLM_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+LLM_API_KEY = "AIzaSy..."
+LLM_MODEL = "gemini-2.5-flash"
+LLM_DISCLOSED_NAME = "gemini-2.5-flash"
+EMBEDDING_API_KEY = "AIzaSy..."
+
+# Usage Limits & Circuit Breakers
+DAILY_USER_VOICE_LIMIT = 10
+DAILY_GLOBAL_VOICE_LIMIT = 200
+PUBLIC_VOICE_MAX_SECONDS = 30
+ADMIN_USER_HASHES = ""
+```
+
+> [!NOTE]
+> All API keys remain strictly server-side in Streamlit backend workers and are never exposed to browser clients.
+
+### Step-by-Step Deployment
+1. Log in to [share.streamlit.io](https://share.streamlit.io/) with your GitHub account.
+2. Click **New app**.
+3. Fill in the repository details:
+   - **Repository:** `itsakhilesh7/KIsan-Saathi`
+   - **Branch:** `main`
+   - **Main file path:** `frontend_streamlit/app.py`
+4. Click **Advanced settings...** and paste your secrets into the **Secrets** text area.
+5. Click **Deploy!**
+6. Once deployed, the web demo will be live at `https://<your-subdomain>.streamlit.app/`.
+

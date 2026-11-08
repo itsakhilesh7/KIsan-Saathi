@@ -16,6 +16,8 @@ import re
 from backend.app.core.messages import get_message
 from backend.app.core.safety_keywords import (
     ALL_PROHIBITED_CHEMICAL_TOKENS as PROHIBITED_CHEMICAL_TOKENS,
+)
+from backend.app.core.safety_keywords import (
     DIAGNOSIS_KEYWORDS_EN,
     DOSAGE_PATTERN,
     DOSE_INDICATORS_EN,

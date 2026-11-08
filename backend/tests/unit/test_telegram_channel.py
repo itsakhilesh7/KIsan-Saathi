@@ -12,7 +12,8 @@ from backend.app.channels.telegram.client import TelegramChannelClient
 from backend.app.channels.telegram.poller import parse_update, process_update
 from backend.app.core.config import Settings
 from backend.app.repositories.deduplication import InMemoryDeduplicationRepository
-from backend.app.services.orchestrator import handle_voice_message
+from backend.app.repositories.usage_limits import SQLiteUsageLimitsRepository
+from backend.app.services.orchestrator import handle_voice_message, set_usage_limits_repo
 
 # Sample Telegram Update Fixtures (MOCKED)
 SAMPLE_TEXT_UPDATE = {
@@ -242,7 +243,12 @@ async def test_telegram_voice_flow_end_to_end_mocked(tmp_path):
         mock_llm.return_value = ("పంటను గమనించి వేపనూనె పిచికారీ చేయండి.", "echo-model")
         mock_tts.return_value = b"DUMMY_TTS_WAV"
 
-        await handle_voice_message(msg, settings, client=mock_client)
+        test_limits = SQLiteUsageLimitsRepository(str(tmp_path / "tele_limits_1.sqlite3"))
+        set_usage_limits_repo(test_limits)
+        try:
+            await handle_voice_message(msg, settings, client=mock_client)
+        finally:
+            set_usage_limits_repo(None)
 
         # Confirm Telegram client methods called
         assert mock_client.download_media.called
@@ -296,7 +302,12 @@ async def test_telegram_voice_flow_unsupported_intent_blocked_default(tmp_path):
         }
         mock_tts.return_value = b"DUMMY_TTS_WAV"
 
-        await handle_voice_message(msg, settings, client=mock_client)
+        test_limits = SQLiteUsageLimitsRepository(str(tmp_path / "tele_limits_1.sqlite3"))
+        set_usage_limits_repo(test_limits)
+        try:
+            await handle_voice_message(msg, settings, client=mock_client)
+        finally:
+            set_usage_limits_repo(None)
 
         assert not mock_llm.called
         assert mock_client.send_text.called

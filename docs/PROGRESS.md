@@ -10,9 +10,9 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
 - **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality), and Router Hardening Done.
-- **P4 (Crop Q&A + Safety):** Phase 4 (v1) Complete. Ingestion of 35 official PJTSAU technology cards with SHA-256 hashes, multilingual embedding retrieval comparison (100% Top-1 recall on 30 test queries), E4 safety test suite (51 passing tests enforcing chemical and dosage refusals, disease diagnosis refusal, prompt injection defense, and output post-check), grounded answer composer, and orchestrator routing for Paddy and Cotton. Unit test suite: **268 tests passing**.
-- **P5 (Evon, Web Demo, Dashboard):** Phase 5-lite completed (Telegram webhook mode, daily usage caps & quotas, Dockerfile containerization, Render deployment guide).
-- **P6 (Evaluation + Deploy):** In Progress. Experiment E1 (Prisma STT Noise, Telephone, and WhatsApp Robustness) complete with 86 live calls recorded (`evaluation/results/e1_summary_table.md`, `e1_robustness_chart.png`). E4 Safety Suite complete with 51 automated evaluations passing. Unit test suite: **268 tests passing**.
+- **P4 (Crop Q&A + Safety):** Phase 4 (v1) Complete. Ingestion of 35 official PJTSAU technology cards with SHA-256 hashes, multilingual embedding retrieval comparison (100% Top-1 recall on 30 test queries), E4 safety test suite (51 passing tests enforcing chemical and dosage refusals, disease diagnosis refusal, prompt injection defense, and output post-check), grounded answer composer, and orchestrator routing for Paddy and Cotton.
+- **P5 (Evon, Web Demo, Dashboard):** Phase 5-lite completed (Telegram webhook mode, daily usage caps & quotas, Dockerfile containerization, Render deployment guide). **Optional Stretch Web Demo Completed**: `frontend_streamlit/app.py` reusing existing orchestrator functions without logic duplication, microphone input (`st.audio_input`), audio playback, structured evidence cards, model disclosure pills, and Streamlit Community Cloud deployment guide with `packages.txt` (`ffmpeg`).
+- **P6 (Evaluation + Deploy):** In Progress. Experiment E1 (Prisma STT Noise, Telephone, and WhatsApp Robustness) complete with 86 live calls recorded (`evaluation/results/e1_summary_table.md`, `e1_robustness_chart.png`). E4 Safety Suite complete with 51 automated evaluations passing. Unit test suite: **273 unit tests passing**.
 - **P7 (Hardening & Review):** Done. Centralized user-facing strings into `backend/app/core/messages.py`, zero Indic script literals in `services/` or `channels/`, and generated `docs/WORDING_REVIEW.md`.
 - **P8 (Submission):** Not started.
 
@@ -56,7 +56,36 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
-### [2026-11-08 15:45] Phase 4 (v1): Crop Saathi over Verified Extension Documents Complete
+### [2026-11-08 16:05] Optional Stretch: Interactive Streamlit Web Demo in `frontend_streamlit/`
+- **Goal and phase:** Optional stretch (interactive web demo in `frontend_streamlit/` reusing backend orchestrator functions with zero duplicated business logic, audio microphone input, model disclosure, evidence cards, usage caps, and Streamlit Community Cloud deployment documentation).
+- **What changed:**
+  - **1. Streamlit Application (`frontend_streamlit/app.py`):**
+    - Built interactive, mobile-friendly Streamlit web application.
+    - Integrated `st.audio_input` for direct in-browser microphone voice queries, alongside an audio file uploader and text query input with quick-action test buttons.
+    - Language hint selector: `Auto-detect`, `te-IN` (Telugu), `hi-IN` (Hindi), `en-IN` (English), `hi-en` (Hinglish).
+    - Audio output: Synthesized voice note played back via `st.audio` (OGG/Opus format).
+    - Evidence & Source Cards: Structured cards rendering Mandi prices (Market, arrival date, modal price, min/max range, data.gov.in link), Weather forecasts (temperature, rain probability, Open-Meteo link), and PJTSAU Agro-Technologies advisory cards (card number, publication year, agro-climatic zone, document link).
+    - Model & Provenance Disclosure: Badges displaying STT (`Gnani Prisma v3.0`), TTS (`Gnani Timbre`), and LLM / Grounding Reasoner (`LLM_DISCLOSED_NAME`).
+    - Dialogue State & Usage Quota: Real-time user daily voice usage vs limit progress bar (`SQLiteUsageLimitsRepository`), global voice counter, and a "Clear Dialogue State" button.
+  - **2. Streamlit Channel Adapter (`StreamlitChannelClient`):**
+    - Implemented `ChannelClient` protocol in `frontend_streamlit/app.py` capturing in-memory media bytes and synthesized responses.
+  - **3. Orchestrator Pipeline Result Dict Support (`backend/app/services/orchestrator.py`):**
+    - Updated `handle_voice_message` and `handle_text_message` to return rich pipeline execution dictionaries with zero breaking changes to existing callers or tests.
+    - Supported explicit `language` field in message payload as an override hint while maintaining default language resolution.
+    - Added `"audio/webm"` to `ALLOWED_AUDIO_MIMES` in `backend/app/core/security.py` to support browser microphone WebM container formats.
+  - **4. Deployment Configuration & Documentation:**
+    - Created `frontend_streamlit/requirements.txt` with minimal dependencies (`streamlit`, `httpx`, `pydantic`, `pydantic-settings`, `PyYAML`, `rapidfuzz`).
+    - Created `frontend_streamlit/packages.txt` and repo root `packages.txt` with `ffmpeg` so Streamlit Community Cloud automatically installs Debian packages for audio normalization.
+    - Updated `docs/DEPLOY.md` (Section 6) with Streamlit Community Cloud deployment steps, 1 GB RAM limits, inactivity sleep behavior, and server-side `secrets.toml` setup.
+  - **5. Automated Testing (`backend/tests/unit/test_streamlit_app.py`):**
+    - Added 5 unit tests verifying protocol implementation, media handling, text pipeline execution, voice pipeline execution, and secrets defaults.
+    - Full test suite: **273 unit tests passing**, 0 failed.
+- **Commands run and their real results:**
+  - `pytest backend/tests/unit/test_streamlit_app.py`: 5 passed in 1.72s.
+  - `pytest backend/tests/unit/`: **273 passed**, 0 failed in 21.80s.
+  - `ruff check frontend_streamlit/ backend/ scripts/`: All checks passed.
+  - `python scripts/scan_secrets.py`: [OK] CLEAN: No exposed secrets detected.
+- **Tests:** 273 passed, 0 failed.
 - **Goal and phase:** Phase 4 (v1). Deliver Crop Saathi over verified official PJTSAU documents for Paddy and Cotton advisory, enforcing strict safety guardrails (chemical dose refusal, disease diagnosis refusal, and out-of-scope redirection to KVK / 1551), multilingual embedding retrieval benchmark, and Single Source of Truth adherence.
 - **What changed:**
   - **1. Source Verification & Ingestion (`backend/scripts/ingest_advisories.py`):**

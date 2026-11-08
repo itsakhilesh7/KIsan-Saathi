@@ -123,7 +123,7 @@ async def handle_voice_message(
     msg: dict[str, Any],
     settings: Settings,
     client: ChannelClient | None = None,
-) -> None:
+) -> dict[str, Any]:
     """Pipeline: WhatsApp media in -> 16kHz WAV -> Prisma STT -> compose grounded answer -> Timbre TTS -> voice out."""
     channel = client or WhatsAppChannelClient(settings=settings)
     media_id = msg.get("media_id", "")
@@ -132,23 +132,32 @@ async def handle_voice_message(
     phone_hash = hash_phone(sender_phone, settings.PHONE_HASH_SALT)
     req_id = get_request_id()
 
+    timings: dict[str, float] = {}
+    start_total = time.perf_counter()
+    parsed = None
+    disclosed_model = None
+    retrieved_evidence = None
+
     # Pre-validation check 1: Media MIME type
     if not validate_media_type(mime_type):
         log.warning("Rejected unsupported media MIME type '%s' for user=%s", mime_type, phone_hash)
         fallback_lang = _resolve_user_language(phone_hash, None, settings)
-        await channel.send_text(sender_phone, get_message("unsupported_media", fallback_lang))
+        err_msg = get_message("unsupported_media", fallback_lang)
+        await channel.send_text(sender_phone, err_msg)
         await get_event_repo().log_event({
             "request_id": req_id,
             "user_hash": phone_hash,
             "channel": channel.channel_name,
             "status": "rejected_mime",
         })
-        return
-
-    timings: dict[str, float] = {}
-    start_total = time.perf_counter()
-    parsed = None
-    disclosed_model = None
+        return {
+            "status": "rejected_mime",
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "reply_text": err_msg,
+            "detected_language": fallback_lang,
+            "timings": timings,
+        }
 
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -187,7 +196,15 @@ async def handle_voice_message(
                     "duration": duration,
                     "timings": timings,
                 })
-                return
+                return {
+                    "status": "rejected_duration",
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "reply_text": too_long_msg,
+                    "detected_language": fallback_lang,
+                    "duration": duration,
+                    "timings": timings,
+                }
 
             if duration < 1.0:
                 log.info("Voice note duration (%.2fs) < 1.0s, returning empty_transcript message", duration)
@@ -201,7 +218,15 @@ async def handle_voice_message(
                     "duration": duration,
                     "timings": timings,
                 })
-                return
+                return {
+                    "status": "audio_too_short",
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "reply_text": too_short_msg,
+                    "detected_language": fallback_lang,
+                    "duration": duration,
+                    "timings": timings,
+                }
 
             # Check daily voice usage limits to protect Gnani credits
             admin_set = {h.strip() for h in settings.ADMIN_USER_HASHES.split(",") if h.strip()}
@@ -224,7 +249,16 @@ async def handle_voice_message(
                     "duration": duration,
                     "timings": timings,
                 })
-                return
+                return {
+                    "status": "rejected_rate_limit",
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "reply_text": limit_msg,
+                    "detected_language": fallback_lang,
+                    "reason": limit_reason,
+                    "duration": duration,
+                    "timings": timings,
+                }
 
             # Stage 2: Prisma Speech-to-Text
             s = time.perf_counter()
@@ -234,7 +268,12 @@ async def handle_voice_message(
             transcript = stt_res.get("transcript", "").strip()
             raw_detected_lang = stt_res.get("detected_language_code")
             is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
-            if raw_detected_lang:
+
+            explicit_lang = msg.get("language")
+            if explicit_lang and explicit_lang.lower() not in ("auto", "auto-detect"):
+                detected_lang = explicit_lang
+                get_user_pref_repo().set_language(phone_hash, detected_lang)
+            elif raw_detected_lang:
                 detected_lang = raw_detected_lang
                 get_user_pref_repo().set_language(phone_hash, detected_lang)
             else:
@@ -252,7 +291,14 @@ async def handle_voice_message(
                     "status": "empty_transcript",
                     "timings": timings,
                 })
-                return
+                return {
+                    "status": "empty_transcript",
+                    "request_id": req_id,
+                    "user_hash": phone_hash,
+                    "reply_text": clarification,
+                    "detected_language": detected_lang,
+                    "timings": timings,
+                }
 
             # Stage 3: Intent extraction & Grounded Answering / LLM reasoning
             s = time.perf_counter()
@@ -280,6 +326,7 @@ async def handle_voice_message(
                             state=parsed.slots.state or "Telangana",
                             settings=settings,
                         )
+                        retrieved_evidence = evidence
                         reply_text = compose_mandi_answer(
                             evidence,
                             language=detected_lang,
@@ -301,6 +348,7 @@ async def handle_voice_message(
                     state=parsed.slots.state or "Telangana",
                     settings=settings,
                 )
+                retrieved_evidence = weather_ev
                 reply_text = compose_weather_answer(
                     weather_ev,
                     language=detected_lang,
@@ -343,6 +391,7 @@ async def handle_voice_message(
                     )
                     if matches:
                         best_card, score = matches[0]
+                        retrieved_evidence = advisory_service.card_to_evidence(best_card, score)
                         reply_text = compose_crop_advisory_answer(
                             card=best_card,
                             query=transcript,
@@ -438,6 +487,21 @@ async def handle_voice_message(
             "transcript": transcript if settings.STORE_RAW_TRANSCRIPTS else None,
             "reply": reply_text if settings.STORE_RAW_TRANSCRIPTS else None,
         })
+        return {
+            "status": "ok",
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "transcript": transcript,
+            "reply_text": reply_text,
+            "detected_language": detected_lang,
+            "raw_detected_language": raw_detected_lang,
+            "disclosed_model": disclosed_model,
+            "intent": parsed.intent.value if parsed else None,
+            "slots": parsed.slots.model_dump() if parsed and parsed.slots else {},
+            "evidence": retrieved_evidence,
+            "audio_bytes": ogg_reply_bytes,
+            "timings": timings,
+        }
     except Exception as e:
         log.exception("Voice pipeline processing failed: %s", e)
         err_lang = _resolve_user_language(phone_hash, None, settings)
@@ -460,13 +524,22 @@ async def handle_voice_message(
             await channel.send_text(sender_phone, fallback_msg)
         except Exception:
             log.exception("Failed to deliver fallback notification")
+        return {
+            "status": "error",
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "reply_text": fallback_msg,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "timings": timings,
+        }
 
 
 async def handle_text_message(
     msg: dict[str, Any],
     settings: Settings,
     client: ChannelClient | None = None,
-) -> None:
+) -> dict[str, Any]:
     """Processes incoming text messages using strict intent extraction and grounded answering."""
     channel = client or WhatsAppChannelClient(settings=settings)
     sender_phone = msg.get("from", "")
@@ -475,11 +548,17 @@ async def handle_text_message(
     req_id = get_request_id()
     parsed = None
     disclosed_model = None
+    retrieved_evidence = None
+    start_total = time.perf_counter()
 
     try:
         is_first_turn = get_user_pref_repo().get_language(phone_hash) is None
+        explicit_lang = msg.get("language")
         detected_script_lang = detect_text_language(text)
-        user_lang = detected_script_lang or _resolve_user_language(phone_hash, None, settings)
+        if explicit_lang and explicit_lang.lower() not in ("auto", "auto-detect"):
+            user_lang = explicit_lang
+        else:
+            user_lang = detected_script_lang or _resolve_user_language(phone_hash, None, settings)
         get_user_pref_repo().set_language(phone_hash, user_lang)
 
         parsed, llm_disclosed = await classify_intent_with_llm_fallback(
@@ -506,6 +585,7 @@ async def handle_text_message(
                         state=parsed.slots.state or "Telangana",
                         settings=settings,
                     )
+                    retrieved_evidence = evidence
                     reply = compose_mandi_answer(
                         evidence,
                         language=user_lang,
@@ -527,6 +607,7 @@ async def handle_text_message(
                 state=parsed.slots.state or "Telangana",
                 settings=settings,
             )
+            retrieved_evidence = weather_ev
             reply = compose_weather_answer(
                 weather_ev,
                 language=user_lang,
@@ -569,6 +650,7 @@ async def handle_text_message(
                 )
                 if matches:
                     best_card, score = matches[0]
+                    retrieved_evidence = advisory_service.card_to_evidence(best_card, score)
                     reply = compose_crop_advisory_answer(
                         card=best_card,
                         query=text,
@@ -630,6 +712,19 @@ async def handle_text_message(
             "transcript": text if settings.STORE_RAW_TRANSCRIPTS else None,
             "reply": reply if settings.STORE_RAW_TRANSCRIPTS else None,
         })
+        return {
+            "status": "ok",
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "transcript": text,
+            "reply_text": reply,
+            "detected_language": user_lang,
+            "disclosed_model": disclosed_model,
+            "intent": parsed.intent.value if parsed else None,
+            "slots": parsed.slots.model_dump() if parsed and parsed.slots else {},
+            "evidence": retrieved_evidence,
+            "timings": {"total": round(time.perf_counter() - start_total, 2)},
+        }
     except Exception as e:
         log.exception("Text message answering failed: %s", e)
         err_lang = _resolve_user_language(phone_hash, None, settings)
@@ -651,6 +746,15 @@ async def handle_text_message(
             await channel.send_text(sender_phone, fallback_msg)
         except Exception:
             log.exception("Failed to deliver fallback text")
+        return {
+            "status": "error",
+            "request_id": req_id,
+            "user_hash": phone_hash,
+            "reply_text": fallback_msg,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "timings": {"total": round(time.perf_counter() - start_total, 2)},
+        }
 
 
 async def handle_incoming_message(

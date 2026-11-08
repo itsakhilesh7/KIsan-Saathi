@@ -162,11 +162,15 @@ ruff check backend/
 python scripts/scan_secrets.py
 ```
 
-### 4. Running the API Locally
+### 4. Running the Web Demo & API Locally
 ```powershell
-# Start Uvicorn development server
+# 1. Run the interactive Streamlit Web Demo (microphone + text + evidence cards):
+streamlit run frontend_streamlit/app.py
+
+# 2. Or start the Uvicorn development server:
 uvicorn backend.app.main:app --reload --port 8000
 ```
+- Streamlit Web Demo: `http://localhost:8501`
 - Health Check: `http://localhost:8000/api/health`
 - Interactive API Docs: `http://localhost:8000/docs`
 
@@ -192,12 +196,13 @@ python -m backend.scripts.eval_wer --csv backend/data/transcripts.csv
 Kisan Saathi is fully hardened, containerized, and deployable for public pilot testing under strict safety constraints (`rules.md`).
 
 ### Test Suite Status
-- **Unit Tests Passing:** **209 passed**, 0 failed, 0 warnings/errors (ran in ~18s).
+- **Unit Tests Passing:** **273 passed**, 0 failed, 0 warnings/errors (ran in ~22s).
 - **Fast-Fail Timeout Protection:** `pytest-timeout` configured at 60s per test in `pyproject.toml`.
 - **Wording Single Source of Truth:** 100% of user-visible strings across Telugu, Hindi, English, and Hinglish are centralized in `backend/app/core/messages.py`. Zero Indic script literals permitted in `services/` or `channels/`.
 - **Settings Parity:** Guaranteed 1:1 key and default matching between `Settings` and `.env.example`.
 - **Secret Hygiene:** Working tree and Git commit history clean (verified with `python scripts/scan_secrets.py`).
 - **Prisma Robustness Evaluation (E1):** 86 live STT calls across noise (pink, brown at SNR 20, 10, 5 dB), telephony (G.711 $\mu$-law, AMR-NB), and WhatsApp Opus compression documented in `evaluation/results/e1_summary_table.md`.
+- **Crop Saathi Evaluation (E4):** 51 passing safety test cases verifying chemical dose refusal, disease diagnosis refusal, and out-of-scope commodity handling.
 
 ### Live vs Mocked Components
 
@@ -207,7 +212,9 @@ Kisan Saathi is fully hardened, containerized, and deployable for public pilot t
 | **Gnani Timbre TTS v2.5** | ✅ Active | **LIVE** | Synthesizes native audio using language-matched voices: Lavanya (`te-IN`), Nalini (`hi-IN`), Kaveri (`en-IN`), Poorvi (`hi-en`). |
 | **Agmarknet Mandi API** | ✅ Active | **LIVE** | Live data.gov.in integration for Warangal, Telangana. Features modal price extraction, dates in natural language, unit attribution (Rs per quintal), and SQLite offline caching with non-blocking startup warmup. |
 | **Open-Meteo Weather API** | ✅ Active | **LIVE** | Live 3-day weather forecasts for Warangal with rain probability and max/min temperatures. |
+| **Crop Saathi (PJTSAU)** | ✅ Active | **LIVE Grounded** | Ingested 35 official PJTSAU Agro-Technologies cards with precomputed 3072-dim embeddings (100% Top-1 recall across 30 multilingual benchmark queries). |
 | **Telegram Channel** | ✅ Active | **LIVE** | Fallback channel (D-002) supporting both **long polling** (local dev) and **webhook mode** with secret token verification (`POST /telegram/webhook/<secret_path>`) for cloud deployment. |
+| **Streamlit Web Demo** | ✅ Active | **LIVE (Local/Cloud)** | Interactive web demo in `frontend_streamlit/app.py` with in-browser microphone recording (`st.audio_input`), text questions, audio player, evidence cards, and model disclosure pills. |
 | **WhatsApp Cloud API** | ✅ Ready | **LIVE Ready** | Production-hardened with HMAC-SHA256 signature enforcement, media streaming, and SQLite deduplication. |
 | **Evon LLM Adapter** | ⚠️ Stand-in | **MOCKED / Disclosed** | Per D-009, no hosted API exists yet. Runs in disclosed stand-in mode. Follows safety rules strictly (never invents prices or chemical doses; refers farmers to 1551 helpline). |
 | **Usage Caps & Protection** | ✅ Active | **LIVE (SQLite)** | Daily per-user voice limit (`DAILY_USER_VOICE_LIMIT=10`), global daily limit (`DAILY_GLOBAL_VOICE_LIMIT=200`), 30s audio cutoff (`PUBLIC_VOICE_MAX_SECONDS=30`), and admin hash bypass. |
