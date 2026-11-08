@@ -24,14 +24,27 @@ Allowlist for factual data. Status values: `discovered`, `schema_verified`, `liv
 - **Status:** `approved_for_mvp` (Verified live on 2026-11-05; 11 unit tests passing in `backend/tests/unit/test_phase3b_weather_and_intent.py`).
 
 ## 3. Crop Q&A: Curated Official Advisories (Primary) & KCC
-- **Source Status:** Curated official advisories from PJTSAU (Professor Jayashankar Telangana State Agricultural University), ICAR institutes (CRIDA, CICR, IIRR, IIHR), KVK portal, and Telangana Agriculture Department.
-- **KCC API Finding (2026-11-05):** No usable real-time API or downloadable CSV exists for the pilot state (Telangana) on data.gov.in. Therefore, Crop Saathi builds upon curated official university & ICAR extension documents for cotton, chilli, paddy, and tomato.
-- **Generic Architecture:** Retrieval pipeline is strictly generic (`documents -> chunks -> embeddings -> similarity search with source metadata`).
-- **Use:** Retrieval corpus for Crop Saathi. Keep `raw_text` untouched. Label answers with official source metadata (title, publisher, date). Strip chemical doses by default (`ALLOW_CHEMICAL_DETAILS=false`).
-- **Status:** `reviewed` (Curated document list approved for Phase 3C/4).
+- **Source Status:** Curated official advisories from PJTSAU (Professor Jayashankar Telangana State Agricultural University).
+- **Approved Primary Corpus:** *PJTSAU Agro-Technologies 2020-21* (Directorate of Research, Rajendranagar, Hyderabad; Publication No. `PJTSAU/Res/2020-21/AT`, URL `https://pjtau.edu.in/director-of-research-2/`).
+  - Contains 35 official technology cards (Card numbers 106 to 140) spanning Paddy, Cotton, and Rainfed technologies for Central Telangana Zone (Warangal) and Southern Telangana Zone.
+  - Fully ingested in `backend/data/crop_advisories.jsonl` with untouched `raw_text`, SHA-256 `content_hash`, publisher, year, zone, and page numbers.
+  - Precomputed 3072-dimensional embeddings via Google AI Studio `gemini-embedding-001` cached in `backend/data/crop_advisories_embeddings.json`.
+- **Source (b) Dropped (2026-11-08):** *PJTSAU Vyavasaaya Diksoochi / Panchangam Telugu PDFs* (`https://pjtau.edu.in/vyavasaayam-diksoochi/`) were inspected and dropped per instructions: text extraction revealed unmapped 8-bit ASCII legacy fonts (Anu / Shree-Lipi / PUA glyphs) without a ToUnicode CMap, producing garbled text.
+- **Scope Enforcement (Phase 4 v1):**
+  - Supported crops for detailed advisory: **Paddy** and **Cotton** only.
+  - Out-of-scope crops (**Chilli**, **Tomato**): Return polite disclaimer directing farmers to local KVK or 1551 Kisan Call Centre, with full mandi price and weather support intact.
+- **KCC API Finding (2026-11-05):** No usable real-time API or downloadable CSV exists for the pilot state (Telangana) on data.gov.in. Therefore, Crop Saathi builds upon curated official university & ICAR extension documents.
+- **Generic Architecture:** Retrieval pipeline is strictly generic (`documents -> chunks -> embeddings -> cosine similarity search with source metadata`).
+- **Use:** Retrieval corpus for Crop Saathi. Keep `raw_text` untouched. Label answers with official source metadata (`[Title], [Publisher], [Year]`). Strip chemical doses by default (`ALLOW_CHEMICAL_DETAILS=false`).
+- **Status:** `approved_for_mvp` (35 cards ingested, benchmarked with 100% Top-1 recall on 30 test queries; 51 E4 safety tests passing).
 
-## 4. Curated advisories (8 to 12 documents)
-Publishers: PJTSAU (pjtsau.edu.in), ICAR-CRIDA, ICAR-CICR (cotton), ICAR-IIRR (rice), ICAR-IIHR (chilli), KVK portal, and Telangana Agriculture Department. Store title, publisher, URL, date (or `unknown`), retrieved-at, region, crop, language, hash, reviewer status. Manual list only, no crawling.
+## 4. Curated advisories (Corpus Inventory)
+| Card Range | Crop / Domain | Zone | Publication | Status |
+|---|---|---|---|---|
+| Cards 106–123 | Paddy (Rice) - Water saving (D-DSR, AWD), nutrient management, IPM | Central Telangana Zone (Warangal), Southern Telangana Zone | PJTSAU Agro-Technologies 2020-21 | `approved_for_mvp` |
+| Cards 124–132 | Cotton (Bt Cotton) - Mechanisation, nutrient management (Alfisols/Vertisols), Pink bollworm IPM | Central Telangana Zone (Warangal), Southern Telangana Zone | PJTSAU Agro-Technologies 2020-21 | `approved_for_mvp` |
+| Cards 133–140 | Cross-cutting rainfed / soil technologies | Telangana (Central & Southern) | PJTSAU Agro-Technologies 2020-21 | `approved_for_mvp` |
+| Diksoochi Telugu PDFs | General Agriculture (Legacy fonts) | Telangana | PJTSAU Diksoochi 2019-20 | `deprecated` (Legacy font encoding) |
 
 ## 5. Speech evaluation data (accuracy testing, not training)
 | Dataset | Use | Notes |

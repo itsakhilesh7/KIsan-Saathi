@@ -10,9 +10,9 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 - **P1 (Backend Foundation & Migration):** Done (migrated, hardened, Phase 1.5, 1.6 & 1.7 complete; 42 unit tests passing).
 - **P2 (Live Loop / Telegram Channel Fallback):** LIVE Verified on Telegram (D-002 active). Live voice notes in Telugu processed and verified end-to-end via Gnani Prisma STT v3.0 and Timbre TTS v2.5.
 - **P3 (Tools, Intent, Grounded Answers):** Phase 3A (Mandi Connector), Phase 3A.1 (Multi-Market Hardening), Phase 3B (Pilot Analysis, Weather Connector, Chilli Disambiguation, Safe Intent Fallback), Phase 3C (Mandi Cache, Variety Separation, Pilot Confirmation), Phase 3D (Wording Single Source of Truth, Mandi Cache Lifecycle, Conversation Flows, Speech Quality), and Router Hardening Done.
-- **P4 (Crop Q&A + Safety):** Step 3.1 completed (curated advisory document list proposed; awaiting approval).
+- **P4 (Crop Q&A + Safety):** Phase 4 (v1) Complete. Ingestion of 35 official PJTSAU technology cards with SHA-256 hashes, multilingual embedding retrieval comparison (100% Top-1 recall on 30 test queries), E4 safety test suite (51 passing tests enforcing chemical and dosage refusals, disease diagnosis refusal, prompt injection defense, and output post-check), grounded answer composer, and orchestrator routing for Paddy and Cotton. Unit test suite: **268 tests passing**.
 - **P5 (Evon, Web Demo, Dashboard):** Phase 5-lite completed (Telegram webhook mode, daily usage caps & quotas, Dockerfile containerization, Render deployment guide).
-- **P6 (Evaluation + Deploy):** In Progress. Experiment E1 (Prisma STT Noise, Telephone, and WhatsApp Robustness) complete with 86 live calls recorded (`evaluation/results/e1_summary_table.md`, `e1_robustness_chart.png`). Unit test suite: **209 tests passing**.
+- **P6 (Evaluation + Deploy):** In Progress. Experiment E1 (Prisma STT Noise, Telephone, and WhatsApp Robustness) complete with 86 live calls recorded (`evaluation/results/e1_summary_table.md`, `e1_robustness_chart.png`). E4 Safety Suite complete with 51 automated evaluations passing. Unit test suite: **268 tests passing**.
 - **P7 (Hardening & Review):** Done. Centralized user-facing strings into `backend/app/core/messages.py`, zero Indic script literals in `services/` or `channels/`, and generated `docs/WORDING_REVIEW.md`.
 - **P8 (Submission):** Not started.
 
@@ -56,7 +56,45 @@ Kisan Saathi is a WhatsApp-first voice assistant for Indian farmers (Telugu, Hin
 
 ## LOG
 
-### [2026-11-08 14:15] Evaluation E1: Prisma STT Noise, Telephone, and WhatsApp Robustness Evaluation
+### [2026-11-08 15:45] Phase 4 (v1): Crop Saathi over Verified Extension Documents Complete
+- **Goal and phase:** Phase 4 (v1). Deliver Crop Saathi over verified official PJTSAU documents for Paddy and Cotton advisory, enforcing strict safety guardrails (chemical dose refusal, disease diagnosis refusal, and out-of-scope redirection to KVK / 1551), multilingual embedding retrieval benchmark, and Single Source of Truth adherence.
+- **What changed:**
+  - **1. Source Verification & Ingestion (`backend/scripts/ingest_advisories.py`):**
+    - Inspected *Source (b)* (PJTSAU Vyavasaaya Diksoochi Telugu PDFs, 88.3 MB). Text extraction showed unmapped 8-bit ASCII / Anu / PUA glyphs without a ToUnicode CMap; per instructions, Source (b) was officially dropped.
+    - Verified *Source (a)*: *PJTSAU Agro-Technologies 2020-21* (Publication `PJTSAU/Res/2020-21/AT`, Directorate of Research). Ingested all 35 official technology cards (cards 106 to 140) into `backend/data/crop_advisories.jsonl` with untouched `raw_text`, title, page, publisher, publication number, year, source URL, agro-climatic zone, retrieved-at timestamp, and SHA-256 `content_hash`.
+  - **2. Precomputed Multilingual Embeddings (`backend/scripts/precompute_embeddings.py`):**
+    - Generated and cached 3072-dimensional embeddings for all 35 technology cards using Google AI Studio `gemini-embedding-001` (`backend/data/crop_advisories_embeddings.json`).
+  - **3. Retrieval Service (`backend/app/services/retrieval_service.py`):**
+    - Implemented `AdvisoryRetrievalService` with cosine similarity search, crop filtering (`"paddy"` / `"cotton"`), similarity thresholding (default 0.52), and deterministic offline fallback for sandboxed test environments.
+  - **4. Retrieval Benchmark Comparison (`backend/scripts/eval_retrieval_comparison.py`):**
+    - Evaluated 30 realistic farmer queries across Telugu (10), Hindi (10), and English (10):
+      - **Direct Multilingual Recall:** **30/30 (100.0%)**, Average Cosine Sim: **0.7731**
+      - **English Translated Recall:** **30/30 (100.0%)**, Average Cosine Sim: **0.8030**
+    - Logged to `evaluation/results/retrieval_benchmark_30.json`. Direct multilingual embeddings eliminate the latency and cost of extra translation calls while achieving 100% Top-1 accuracy.
+  - **5. Safety Service (`backend/app/services/safety.py` & `core/safety_keywords.py`):**
+    - Under `ALLOW_CHEMICAL_DETAILS=false`: strips chemical names and numeric dosages; appends mandatory product label check and KVK/1551 consultation reminder.
+    - Refuses conclusive disease diagnosis from short symptom descriptions (instructs farmer to bring sample to KVK).
+    - Defends against prompt injections in cards or queries.
+    - Post-check validator (`validate_composer_output`): ensures no ungrounded numbers or prohibited chemicals are emitted.
+  - **6. Grounded Answer Composer (`backend/app/services/answer_composer.py`):**
+    - Generates responses in user's language in $\le 2$ sentences (spoken $\le 15$s), always mentions agro-climatic zone, appends official source line (`[Title], [Publisher], [Year]`), and loads templates from `core/messages.py`.
+  - **7. Orchestrator Wiring (`backend/app/services/orchestrator.py` & `intent_service.py`):**
+    - Routed `CROP_ADVISORY_QUERY` to Paddy and Cotton advisory cards with out-of-scope redirection to KVK / 1551 for Chilli and Tomato.
+    - Expanded agricultural and agronomic vocabulary in `CROP_ADVISORY_KEYWORDS`.
+  - **8. Automated Test Suites:**
+    - `test_phase4_crop_saathi.py`: 8 end-to-end and unit tests passing.
+    - `test_safety_e4.py`: 51 safety test cases passing across Telugu, Hindi, and English (refusal of doses, mixtures, injections, off-topic medical/legal, and symptom diagnosis).
+    - Total test suite: **268 unit tests passing**, 0 failed.
+  - **9. Single Source of Truth Compliance:**
+    - Zero Indic script literals in `backend/app/services/` or `channels/`. All user-facing strings centralized in `backend/app/core/messages.py` across `te-IN`, `hi-IN`, `en-IN`, and `hi-en`. Synchronized `docs/WORDING_REVIEW.md`.
+- **Commands run and their real results:**
+  - `python backend/scripts/ingest_advisories.py`: 35 cards ingested into `crop_advisories.jsonl`.
+  - `python backend/scripts/precompute_embeddings.py`: 35 cards embedded and saved.
+  - `python backend/scripts/eval_retrieval_comparison.py`: 30/30 queries evaluated (100% recall).
+  - `pytest backend/tests/unit/`: **268 passed**, 0 failed in 20.40s.
+  - `ruff check backend/ scripts/`: All checks passed.
+  - `python scripts/scan_secrets.py`: [OK] CLEAN.
+- **Tests:** 268 passed, 0 failed.
 - **Goal and phase:** Phase 6 (Evaluation E1). Measure the acoustic robustness of Gnani Prisma STT v3.0 under clean conditions, additive environmental noise (pink, brown at SNR 20, 10, 5 dB), telephone transmission (G.711 $\mu$-law 8 kHz, AMR-NB 8 kHz), and WhatsApp Opus 24 kbps VOIP compression across user recordings.
 - **What changed:**
   - **1. Audio Generation (`backend/scripts/build_eval_audio.py`):**

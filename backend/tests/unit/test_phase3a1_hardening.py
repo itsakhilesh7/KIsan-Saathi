@@ -36,7 +36,7 @@ def test_greeting_detection_requires_short_message_and_no_content():
 
     # 2. Advice question starting with greeting must NOT be classified as greeting
     advice_query = "నమస్కారం, నేను ఇక్కడ పత్తి పండిస్తున్నాను, మీరు నాకు ఏమైనా సలహా ఇవ్వగలరా?"
-    res = extract_intent(advice_query)
+    res = extract_intent(advice_query, enable_crop_advisory=False)
     assert res.intent != IntentType.GREETING_OR_HELP
     assert res.intent == IntentType.UNSUPPORTED_OR_UNCLEAR
 
@@ -163,7 +163,7 @@ async def test_unsupported_intent_never_echoes_by_default(tmp_path):
     mock_client = AsyncMock()
     mock_client.channel_name = "telegram"
 
-    msg = {"from": "918888888888", "text": "నమస్కారం, నేను ఇక్కడ పత్తి పండిస్తున్నాను, మీరు నాకు ఏమైనా సలహా ఇవ్వగలరా?"}
+    msg = {"from": "918888888888", "text": "నమస్కారం, నాకు బ్యాంక్ లోన్ సబ్సిడీ గురించి చెప్పండి"}
 
     with patch("backend.app.integrations.llm.openai_compatible.OpenAICompatibleLLM.answer", new_callable=AsyncMock) as mock_llm:
         await handle_text_message(msg, settings, client=mock_client)

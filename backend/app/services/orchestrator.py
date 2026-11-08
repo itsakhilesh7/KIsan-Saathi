@@ -31,10 +31,18 @@ from ..schemas.intent import IntentType
 from . import audio_service
 from .answer_composer import (
     compose_clarification_reply,
+    compose_crop_advisory_answer,
     compose_mandi_answer,
     compose_weather_answer,
 )
 from .intent_service import classify_intent_with_llm_fallback, detect_text_language
+from .retrieval_service import AdvisoryRetrievalService
+from .safety import (
+    get_diagnosis_refusal_message,
+    get_out_of_scope_crop_message,
+    is_diagnostic_query,
+    is_dose_or_chemical_request,
+)
 
 log = logging.getLogger("orchestrator")
 
@@ -300,6 +308,52 @@ async def handle_voice_message(
                     requested_district=target_dist,
                 )
                 disclosed_model = "grounded/open_meteo_weather"
+            elif parsed.intent == IntentType.CROP_ADVISORY_QUERY:
+                target_crop = (parsed.slots.crop or parsed.slots.commodity or "").lower().strip()
+                if any(c in target_crop for c in ("chilli", "mirchi", "tomato")):
+                    reply_text = get_out_of_scope_crop_message(
+                        crop_name=parsed.slots.commodity or parsed.slots.crop or "Chilli/Tomato",
+                        language=detected_lang,
+                    )
+                    disclosed_model = "rule_based/crop_scope_disclaimer"
+                elif is_dose_or_chemical_request(transcript):
+                    reply_text = get_message("chemical_safety_refusal", detected_lang)
+                    disclosed_model = "safety/chemical_refusal"
+                elif is_diagnostic_query(transcript):
+                    reply_text = get_diagnosis_refusal_message(detected_lang)
+                    disclosed_model = "safety/disease_diagnosis_refusal"
+                elif not target_crop:
+                    reply_text = get_message("crop_advisory_clarification", detected_lang)
+                    disclosed_model = "rule_based/clarification"
+                    get_dialogue_repo().set_state(
+                        phone_hash,
+                        {
+                            "intent": IntentType.CROP_ADVISORY_QUERY,
+                            "pending_slot": "crop",
+                            "clarification_type": "missing_crop",
+                        },
+                    )
+                else:
+                    advisory_service = AdvisoryRetrievalService(settings=settings)
+                    matches = advisory_service.retrieve(
+                        query=transcript,
+                        crop=target_crop,
+                        language=detected_lang,
+                        threshold=0.50,
+                    )
+                    if matches:
+                        best_card, score = matches[0]
+                        reply_text = compose_crop_advisory_answer(
+                            card=best_card,
+                            query=transcript,
+                            language=detected_lang,
+                            is_first_turn=is_first_turn,
+                            allow_chemical_details=settings.ALLOW_CHEMICAL_DETAILS,
+                        )
+                        disclosed_model = f"grounded/pjtsau_advisory_card_{best_card.get('card_number')}"
+                    else:
+                        reply_text = get_message("fallback_1551", detected_lang)
+                        disclosed_model = "rule_based/advisory_fallback_1551"
             elif parsed.intent == IntentType.GREETING_OR_HELP:
                 greeting_key = "greeting_first_turn" if is_first_turn else "greeting_repeat"
                 reply_text = get_message(greeting_key, detected_lang)
@@ -480,6 +534,52 @@ async def handle_text_message(
                 requested_district=target_dist,
             )
             disclosed_model = "grounded/open_meteo_weather"
+        elif parsed.intent == IntentType.CROP_ADVISORY_QUERY:
+            target_crop = (parsed.slots.crop or parsed.slots.commodity or "").lower().strip()
+            if any(c in target_crop for c in ("chilli", "mirchi", "tomato")):
+                reply = get_out_of_scope_crop_message(
+                    crop_name=parsed.slots.commodity or parsed.slots.crop or "Chilli/Tomato",
+                    language=user_lang,
+                )
+                disclosed_model = "rule_based/crop_scope_disclaimer"
+            elif is_dose_or_chemical_request(text):
+                reply = get_message("chemical_safety_refusal", user_lang)
+                disclosed_model = "safety/chemical_refusal"
+            elif is_diagnostic_query(text):
+                reply = get_diagnosis_refusal_message(user_lang)
+                disclosed_model = "safety/disease_diagnosis_refusal"
+            elif not target_crop:
+                reply = get_message("crop_advisory_clarification", user_lang)
+                disclosed_model = "rule_based/clarification"
+                get_dialogue_repo().set_state(
+                    phone_hash,
+                    {
+                        "intent": IntentType.CROP_ADVISORY_QUERY,
+                        "pending_slot": "crop",
+                        "clarification_type": "missing_crop",
+                    },
+                )
+            else:
+                advisory_service = AdvisoryRetrievalService(settings=settings)
+                matches = advisory_service.retrieve(
+                    query=text,
+                    crop=target_crop,
+                    language=user_lang,
+                    threshold=0.50,
+                )
+                if matches:
+                    best_card, score = matches[0]
+                    reply = compose_crop_advisory_answer(
+                        card=best_card,
+                        query=text,
+                        language=user_lang,
+                        is_first_turn=is_first_turn,
+                        allow_chemical_details=settings.ALLOW_CHEMICAL_DETAILS,
+                    )
+                    disclosed_model = f"grounded/pjtsau_advisory_card_{best_card.get('card_number')}"
+                else:
+                    reply = get_message("fallback_1551", user_lang)
+                    disclosed_model = "rule_based/advisory_fallback_1551"
         elif parsed.intent == IntentType.GREETING_OR_HELP:
             greeting_key = "greeting_first_turn" if is_first_turn else "greeting_repeat"
             reply = get_message(greeting_key, user_lang)

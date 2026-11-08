@@ -234,7 +234,7 @@ async def test_telegram_voice_flow_end_to_end_mocked(tmp_path):
          patch("backend.app.services.audio_service.wav_to_ogg_opus", side_effect=_mock_wav_to_ogg):
 
         mock_stt.return_value = {
-            "transcript": "వరి తెగులు నివారణ",
+            "transcript": "బ్యాంక్ లోన్ సబ్సిడీ",
             "detected_language_code": "te-IN",
             "raw_language_code": "te-IN",
             "chunks": 1,
@@ -289,7 +289,7 @@ async def test_telegram_voice_flow_unsupported_intent_blocked_default(tmp_path):
          patch("backend.app.services.audio_service.wav_to_ogg_opus", side_effect=_mock_wav_to_ogg):
 
         mock_stt.return_value = {
-            "transcript": "వరి తెగులు నివారణ",
+            "transcript": "బ్యాంక్ లోన్ సబ్సిడీ",
             "detected_language_code": "te-IN",
             "raw_language_code": "te-IN",
             "chunks": 1,

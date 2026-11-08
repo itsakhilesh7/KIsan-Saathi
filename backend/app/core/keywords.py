@@ -56,10 +56,15 @@ WEATHER_KEYWORDS: set[str] = {
 CROP_ADVISORY_KEYWORDS: set[str] = {
     # Telugu
     "పంట", "ఆకులు", "తెగులు", "పురుగు", "మచ్చలు", "సలహా", "పసుపు", "ముడత", "ఎండిపోవడం", "సస్యరక్షణ",
+    "విత్తనం", "విత్తే", "విత్తనాలు", "సాగు", "నాట్లు", "పద్ధతి", "యాజమాన్యం", "ఎరువులు", "ఎరువు",
+    "స్ప్రే", "మోతాదు", "మందు", "చల్లాలి", "వాడాలి", "పురుగుమందు", "కలుపుమందు", "తెగులుమందు",
     # Hindi / Hinglish Devanagari
     "फसल", "पत्ते", "रोग", "कीड़ा", "कीड़े", "धब्बे", "बीमारी", "सलाह", "कर्ल", "प्लांट", "पीले", "सूख",
+    "बुवाई", "बोना", "खेती", "रोपाई", "उर्वरक", "खाद", "छिड़काव", "मात्रा", "दवा", "स्प्रे", "कीटनाशक",
     # English / Hinglish Latin
-    "crop", "disease", "pest", "symptom", "leaves", "leaf", "curl", "spots", "yellowing", "advisory", "plant",
+    "crop advisory", "crop protection", "disease", "pest", "symptom", "leaves", "leaf", "curl", "spots", "yellowing", "advisory",
+    "sow", "sowing", "cultivation", "planting", "transplanting", "management", "spacing", "fertilizer",
+    "spray", "spraying", "dose", "dosage", "pesticide", "insecticide", "fungicide", "herbicide", "chemical",
 }
 
 # Chilli disambiguation tokens

@@ -16,8 +16,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..core.keywords import FORBIDDEN_SAFETY_WORDS
-from ..core.messages import format_natural_date, get_message
+from ..core.messages import MESSAGES, format_natural_date, get_message
 from ..schemas.evidence import Evidence
+from .safety import (
+    contains_prohibited_chemicals,
+    get_label_reminder,
+    is_prompt_injection,
+    strip_chemical_details,
+    validate_composer_output,
+)
 
 log = logging.getLogger("services.answer_composer")
 
@@ -290,3 +297,85 @@ def compose_weather_answer(
     assert str(rain0) in reply, f"Verification failed: rain probability {rain0} missing from weather reply"
 
     return reply
+
+
+def compose_crop_advisory_answer(
+    card: dict[str, Any],
+    query: str,
+    language: str = "te-IN",
+    is_first_turn: bool = False,
+    allow_chemical_details: bool = False,
+) -> str:
+    """Composes a strictly verified, source-grounded crop advisory response (Phase 4).
+
+    Constraints:
+    - At most 2 sentences in user's language (spoken <= 15 seconds) plus a source line.
+    - Qualitative advice only (timing, method, water saving, mechanisation).
+    - Always states the agro-climatic zone from the card.
+    - Strips chemical names, doses, and mixtures unless allow_chemical_details=True.
+    - Attaches mandatory product label & KVK/1551 consultation reminder.
+    - Appends exact source line: [Title], [Publisher], [Year].
+    - Post-check verification against source text.
+    """
+    intro = get_message("ai_intro", language) if is_first_turn else ""
+    card_no = card.get("card_number")
+    title = card.get("title", "")
+    zone = card.get("zone", "Telangana")
+    publisher = "PJTSAU"
+    year = card.get("year", "2020-21")
+    raw_text = card.get("raw_text", "")
+    if is_prompt_injection(raw_text):
+        cleaned_sentences = [
+            s.strip() for s in re.split(r"[.!?]\s+", raw_text)
+            if not is_prompt_injection(s) and len(s.strip()) > 5
+        ]
+        raw_text = ". ".join(cleaned_sentences) if cleaned_sentences else f"{zone} agricultural recommendations"
+
+    # Source line formatting via Single Source of Truth
+    source_line = get_message(
+        "advisory_source_line",
+        language,
+        title=title,
+        publisher=publisher,
+        year=year,
+    )
+
+    # Body formatting via Single Source of Truth
+    card_key = f"advisory_card_{card_no}"
+    if card_key in MESSAGES:
+        body = get_message(card_key, language)
+    else:
+        # Generic qualitative fallback extracted from raw_text or template
+        cleaned_text = strip_chemical_details(raw_text, language=language) if not allow_chemical_details else raw_text
+        sentences = [s.strip() for s in re.split(r"[.!?]\s+", cleaned_text) if len(s.strip()) > 10]
+        selected_text = ". ".join(sentences[:2]) if sentences else ""
+        body = get_message(
+            "advisory_card_generic",
+            language,
+            zone=zone,
+            crop=card.get("crop", "crop"),
+        )
+        if selected_text:
+            body = f"{body} {selected_text}"
+
+    # Strip chemicals and attach label reminder if required
+    if not allow_chemical_details and contains_prohibited_chemicals(body):
+        body = strip_chemical_details(body, language=language)
+
+    # Compose final text with intro and source line
+    final_reply = f"{intro}{body.strip()} {source_line}".strip()
+
+    # Post-check validation
+    valid, reason = validate_composer_output(
+        answer=final_reply,
+        source_text=raw_text,
+        allow_chemical_details=allow_chemical_details,
+    )
+    if not valid:
+        log.error("Composer output failed safety validation: %s", reason)
+        # Safe fallback: zone mention + label reminder + source line
+        reminder = get_label_reminder(language)
+        safe_body = f"{zone} - {reminder}"
+        final_reply = f"{intro}{safe_body} {source_line}".strip()
+
+    return final_reply

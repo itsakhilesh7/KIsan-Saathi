@@ -119,7 +119,7 @@ def extract_intent(
     language: str = "te-IN",
     user_hash: str | None = None,
     dialogue_repo: DialogueStateRepository | None = None,
-    enable_crop_advisory: bool = False,
+    enable_crop_advisory: bool = True,
 ) -> ParsedIntent:
     """Extracts user intent and slots, resolving against dialogue state if clarification pending.
 
@@ -151,7 +151,9 @@ def extract_intent(
     is_chilli = is_ambiguous_chilli(clean_text)
 
     if is_chilli:
-        if _has_any(CHILLI_GREEN_TOKENS, clean_text, tokens):
+        if has_crop_kw and not has_price_kw:
+            matched_commodity = "Chilli"
+        elif _has_any(CHILLI_GREEN_TOKENS, clean_text, tokens):
             matched_commodity = "Green Chilli"
         elif _has_any(CHILLI_DRY_TOKENS, clean_text, tokens):
             matched_commodity = "Dry Chillies"
@@ -196,9 +198,9 @@ def extract_intent(
         and not clarification_type
     )
 
-    is_mandi_domain = (
+    is_mandi_domain = not (has_crop_kw and not has_price_kw) and (
         (has_commodity and has_price_kw)
-        or is_chilli
+        or (is_chilli and not has_crop_kw)
         or has_price_kw
         or is_standalone_commodity
     )
@@ -325,6 +327,17 @@ def extract_intent(
                 clarification_needed=False,
             )
 
+        # 2D. Pending crop resolution for crop advisory
+        elif previous_state.get("pending_slot") == "crop" and matched_commodity:
+            if user_hash and dialogue_repo:
+                dialogue_repo.clear_state(user_hash)
+            return ParsedIntent(
+                intent=IntentType.CROP_ADVISORY_QUERY,
+                language=language,
+                slots=IntentSlots(crop=matched_commodity, commodity=matched_commodity, district="Warangal", state="Telangana"),
+                clarification_needed=False,
+            )
+
     # =========================================================================
     # PRECEDENCE 3: Capabilities, Location, Small Talk, Greeting
     # Apply ONLY to short messages (<= 6 tokens) that contain no domain words.
@@ -421,7 +434,7 @@ async def classify_intent_with_llm_fallback(
     if rule_parsed.intent != IntentType.UNSUPPORTED_OR_UNCLEAR:
         return rule_parsed, None
 
-    if not cfg.LLM_BASE_URL.strip():
+    if not cfg.LLM_BASE_URL.strip() or cfg.APP_ENV == "test":
         return rule_parsed, None
 
     # LLM-assisted intent classification fallback (Requirement 5)

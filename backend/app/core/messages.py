@@ -322,6 +322,101 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en-IN": "I cannot provide specific chemical dosages or mixtures. Please check the product label or call Kisan Call Centre at 1551 to consult an agricultural specialist.",
         "hi-en": "Main chemical dosage ya mixture recommend nahi kar sakta. Kripya product label check karein ya Kisan Call Centre 1551 par call karein.",
     },
+    # Scope enforcement disclaimer for crops outside Paddy and Cotton (Phase 4 v1)
+    "crop_scope_disclaimer": {
+        "te-IN": "క్షమించండి, ప్రస్తుతానికి {crop_name} పంటకు సంబంధించిన వ్యవసాయ సలహాలు అందుబాటులో లేవు. దయచేసి మీ సమీప KVK ను సంప్రదించండి లేదా 1551 కిసాన్ కాల్ సెంటర్‌ను సంప్రదించండి.",
+        "hi-IN": "क्षमा करें, वर्तमान में {crop_name} के लिए कृषि सलाह उपलब्ध नहीं है। कृपया अपने नजदीकी KVK से संपर्क करें या 1551 किसान कॉल सेंटर पर कॉल करें।",
+        "en-IN": "Sorry, crop advisory is currently not available for {crop_name}. Please consult your nearest KVK or call 1551 Kisan Call Center.",
+        "hi-en": "Sorry, abhi {crop_name} ke liye crop advisory available nahi hai. Kripya apne nearest KVK se sampark karein ya 1551 Kisan Call Center par call karein.",
+    },
+    # Refusal of disease diagnosis from short descriptions (Rule 1.1 / Rule 4)
+    "disease_diagnosis_refusal": {
+        "te-IN": "కేవలం సంక్షిప్త వివరణ ఆధారంగా తెగులు లేదా వ్యాధిని ఖచ్చితంగా నిర్ధారించలేము. దయచేసి వ్యాధి సోకిన ఆకు లేదా పంట నమూనాను సమీప KVK లేదా వ్యవసాయ అధికారికి చూపించి ప్రత్యక్షంగా పరీక్షించండి, లేదా 1551 కిసాన్ కాల్ సెంటర్‌ను సంప్రదించండి.",
+        "hi-IN": "केवल संक्षिप्त विवरण के आधार पर फसल रोग या कीट का निश्चित निदान नहीं किया जा सकता। कृपया प्रभावित पत्ती या पौधे का नमूना निकटतम KVK या कृषि अधिकारी को दिखाकर प्रत्यक्ष जांच कराएं, अथवा 1551 किसान कॉल सेंटर पर संपर्क करें।",
+        "en-IN": "A conclusive plant disease diagnosis cannot be made from a short description alone. Please take an affected plant or leaf sample to your nearest KVK or Agricultural Extension Officer for physical examination, or call 1551 Kisan Call Center.",
+        "hi-en": "Keval short description ke aadhar par plant disease ka conclusive diagnosis nahi kiya ja sakta. Kripya affected leaf ya crop sample nearest KVK ya Agricultural Officer ko dikhayein, ya 1551 Kisan Call Center par call karein.",
+    },
+    # Product label reminder to append when general agronomic advice mentions plant protection
+    "label_reminder": {
+        "te-IN": "రసాయనాల మోతాదుల కోసం ఉత్పత్తి లేబుల్‌ను చూడండి మరియు మీ సమీప KVK లేదా 1551 కిసాన్ కాల్ సెంటర్‌ను సంప్రదించండి.",
+        "hi-IN": "रासायनिक खुराक के लिए उत्पाद के लेबल को देखें और अपने नजदीकी KVK या 1551 किसान कॉल सेंटर से सलाह लें।",
+        "en-IN": "For chemical dosages, please check the product label and consult your nearest KVK or 1551 Kisan Call Center.",
+        "hi-en": "Chemical dosage ke liye product label check karein aur nearest KVK ya 1551 Kisan Call Center se consult karein.",
+    },
+    # Source attribution line for advisory cards
+    "advisory_source_line": {
+        "te-IN": "ఆధారం: {title}, {publisher}, {year}.",
+        "hi-IN": "स्रोत: {title}, {publisher}, {year}।",
+        "en-IN": "Source: {title}, {publisher}, {year}.",
+        "hi-en": "Source: {title}, {publisher}, {year}.",
+    },
+    # Verified card summaries
+    "advisory_card_111": {
+        "te-IN": "వరంగల్ మరియు సెంట్రల్ తెలంగాణ జోన్ కోసం, వరిని వర్షాకాలం ప్రారంభానికి 10-15 రోజుల ముందు లేదా జూన్ మధ్యలో డ్రిల్ ద్వారా 2-3 సెం.మీ లోతులో విత్తడం మంచిది. ఈ పద్ధతి ద్వారా 30 నుండి 40 శాతం నీరు ఆదా అవుతుంది మరియు నారుమడి శ్రమ లేకుండా పంట 7-10 రోజులు ముందుగా కోతకు వస్తుంది.",
+        "hi-IN": "वारंगल और मध्य तेलंगाना क्षेत्र के लिए, धान की सीधी बुवाई मानसून से 10-15 दिन पहले या जून के मध्य में ड्रिल द्वारा 2-3 सेमी गहराई पर करें। इस तकनीक से 30 से 40 प्रतिशत पानी की बचत होती है और फसल 7-10 दिन पहले पकती है।",
+        "en-IN": "For Warangal and Central Telangana Zone, sow direct seeded rice 10-15 days before monsoon onset or mid-June with a seed drill at 2-3 cm depth. This method saves 30-40% water and matures 7-10 days earlier without nursery labor.",
+        "hi-en": "Warangal aur Central Telangana zone ke liye, direct seeded rice monsoon se 10-15 din pehle ya mid-June seed drill se 2-3 cm depth par sow karein. Isse 30-40% water save hota hai aur crop 7-10 din pehle harvest ho sakti hai.",
+    },
+    "advisory_card_114": {
+        "te-IN": "వరంగల్ ఎర్ర నేలల్లో (Alfisols) పత్తి పంటకు నేల పరీక్ష ఆధారంగా ఎరువులను విభజించి వేయాలి. నత్రజని, పొటాష్ ఎరువులను విడతలవారీగా వేయడం వల్ల కాయల రాలడం తగ్గి దిగుబడి పెరుగుతుంది.",
+        "hi-IN": "वारंगल की लाल मिट्टी (Alfisols) में बीटी कपास के लिए मिट्टी परीक्षण के अनुसार विभाजित खुराक में उर्वरक डालें। नाइट्रोजन और पोटाश को किस्तों में देने से गूलर गिरना कम होता है और उपज बढ़ती है।",
+        "en-IN": "For Bt cotton in Warangal red chalka soils (Alfisols), apply balanced fertilizers in split doses based on soil testing. Split application of nitrogen and potash reduces square shedding and improves boll retention.",
+        "hi-en": "Warangal ki red chalka mitti me Bt cotton ke liye balanced fertilizer split doses me apply karein. Nitrogen aur potash ki split dosing se square shedding kam hoti hai.",
+    },
+    "advisory_card_115": {
+        "te-IN": "తెలంగాణ నల్లరేగడి నేలల్లో పత్తి పైరుకు నేల పరీక్ష ఆధారంగా సమతుల్య ఎరువులను అందించడం ద్వారా పైరు అధికంగా పెరగకుండా నియంత్రించవచ్చు. ఇది అంతర్గత కాయ కుళ్లును తగ్గించి నాణ్యమైన దూది దిగుబడిని అందిస్తుంది.",
+        "hi-IN": "तेलंगाना की काली मिट्टी में कपास के लिए मिट्टी परीक्षण अनुसार संतुलित खाद डालें ताकि फसल अत्यधिक वानस्पतिक वृद्धि से बचे। इससे गूलर सड़न कम होती है और कपास की बेहतर पैदावार मिलती है।",
+        "en-IN": "For Bt cotton in Vertisols of Telangana, balanced nutrient application based on soil test equations controls excessive vegetative growth. This improves canopy aeration, minimizes boll rot, and increases clean lint yield.",
+        "hi-en": "Telangana Vertisols me cotton ke liye soil test based balanced fertilizer use karein taaki excess vegetative growth control rahe. Isse boll rot kam hota hai aur clean cotton yield increase hoti hai.",
+    },
+    "advisory_card_122": {
+        "te-IN": "వరంగల్ మరియు సెంట్రల్ తెలంగాణ జోన్‌లో వరి పంటకు ఆల్టర్నేట్ వెట్టింగ్ అండ్ డ్రైయింగ్ (AWD) పద్ధతి ద్వారా నీటిని అందించడం మంచిది. ఫీల్డ్ వాటర్ పైపులో నీటి మట్టం నేల నుండి 15 సెం.మీ లోతుకు చేరినప్పుడు మాత్రమే తదుపరి తడి ఇవ్వడం ద్వారా 25 నుండి 35 శాతం నీరు ఆదా అవుతుంది.",
+        "hi-IN": "वारंगल और मध्य तेलंगाना में धान के लिए ऑल्टरनेट वेटिंग एंड ड्राइंग (AWD) तकनीक अपनाएं। पानी की नली में जल स्तर 15 सेमी नीचे जाने पर ही सिंचाई करने से 25 से 35 प्रतिशत पानी की बचत होती है।",
+        "en-IN": "In Central Telangana Zone (Warangal), implement Alternate Wetting and Drying (AWD) using perforated field water tubes. Re-irrigating only when water drops 15 cm below soil surface saves 25 to 35% water while improving root aeration.",
+        "hi-en": "Central Telangana Zone (Warangal) me paddy ke liye Alternate Wetting and Drying (AWD) pani pipe use karein. Water pipe me water level 15 cm drop hone par irrigate karne se 25-35% irrigation water bachta hai.",
+    },
+    "advisory_card_126": {
+        "te-IN": "వరంగల్ పత్తి సాగులో కూలీల కొరత అధిగమించడానికి ట్రాక్టర్ ఆధారిత విత్తే యంత్రాలు మరియు కలుపు తీసే బ్లేడ్ హారోలను వాడండి.",
+        "hi-IN": "वारंगल में कपास की खेती में श्रम की कमी को दूर करने के लिए ट्रैक्टर चालित सीड ड्रिल और ब्लेड हैरो का उपयोग करें।",
+        "en-IN": "To address labor shortage in Warangal cotton farming, adopt selective mechanisation using tractor-drawn pneumatic planters and intercultural blade harrows.",
+        "hi-en": "Warangal cotton me labor shortage manage karne ke liye tractor-drawn planters aur blade harrows use karein.",
+    },
+    "advisory_card_129": {
+        "te-IN": "సెంట్రల్ తెలంగాణ జోన్‌లో వరి నాట్లకు 4 లేదా 8 వరుసల మిషన్ ట్రాన్స్‌ప్లాంటర్‌ను ఉపయోగించడం అత్యంత లాభదాయకం. ఇది ఎకరానికి సరైన మొక్కల సాంద్రతను అందిస్తుంది, కూలీల ఖర్చును 40-50 శాతం తగ్గిస్తుంది మరియు చేతి నాట్ల కంటే 8 నుండి 12 శాతం ఎక్కువ దిగుబడిని ఇస్తుంది.",
+        "hi-IN": "मध्य तेलंगाना जोन में धान की 4 या 8 पंक्तियों वाली मशीन रोपाई सबसे लाभकारी है। इससे प्रति वर्ग मीटर सही पौधों की संख्या मिलती है, रोपाई खर्च 40-50% घटता है और पैदावार 8 से 12 प्रतिशत बढ़ती है।",
+        "en-IN": "In Central Telangana Zone, motorized mechanical rice transplanting ensures uniform hill density of 30-33 hills per square meter. It cuts transplanting labor costs by 40-50% and enhances paddy yield by 8-12% compared to manual transplanting.",
+        "hi-en": "Central Telangana Zone me paddy ke liye 4 ya 8 row mechanical transplanter use karein. Isse uniform hill density milti hai, transplanting cost 40-50% reduce hoti hai aur yield 8-12% increase hoti hai.",
+    },
+    "advisory_card_106": {
+        "te-IN": "వరంగల్ వరి చేనులో కాండం తొలుచు పురుగు నివారణకు నాట్లు వేసేముందు ఆకుల కొనలను తుంచండి మరియు ఎకరానికి 8 నుండి 10 లింగాకర్షక బుట్టలను అమర్చండి.",
+        "hi-IN": "वारंगल में धान के तना छेदक कीट की रोकथाम के लिए रोपाई से पहले पत्तियों के ऊपरी सिरे काट दें और प्रति एकड़ 8 से 10 फेरोमोन ट्रैप लगाएं।",
+        "en-IN": "For yellow stem borer management in Warangal rice fields, clip seedling leaf tips prior to transplanting and install 8 to 10 pheromone traps per acre.",
+        "hi-en": "Warangal me rice stem borer control ke liye transplanting se pehle seedling tips clip karein aur 8 se 10 pheromone traps per acre lagayein.",
+    },
+    "advisory_card_131": {
+        "te-IN": "వరంగల్ వరి చేనులో కాండం తొలుచు పురుగు నివారణకు నాట్లు వేసేముందు ఆకుల కొనలను తుంచండి మరియు ఎకరానికి 8 నుండి 10 లింగాకర్షక బుట్టలను అమర్చండి.",
+        "hi-IN": "वारंगल में धान के तना छेदक कीट की रोकथाम के लिए रोपाई से पहले पत्तियों के ऊपरी सिरे काट दें और प्रति एकड़ 8 से 10 फेरोमोन ट्रैप लगाएं।",
+        "en-IN": "For yellow stem borer management in Warangal rice fields, clip seedling leaf tips prior to transplanting and install 8 to 10 pheromone traps per acre.",
+        "hi-en": "Warangal me rice stem borer control ke liye transplanting se pehle seedling tips clip karein aur 8 se 10 pheromone traps per acre lagayein.",
+    },
+    "advisory_card_132": {
+        "te-IN": "వరంగల్ పత్తి చేనులో గులాబీ రంగు పురుగు నివారణకు ఎకరానికి 5 లింగాకర్షక బుట్టలను అమర్చండి మరియు 80-90 రోజులకు కొమ్మల చివరలను తుంచండి.",
+        "hi-IN": "वारंगल में कपास की गुलाबी सुंडी नियंत्रण के लिए प्रति एकड़ 5 फेरोमोन ट्रैप लगाएं और 80-90 दिनों में पौधों के ऊपरी सिरों की कटाई करें।",
+        "en-IN": "For pink bollworm in Warangal cotton, install 5 pheromone traps per acre from 45 DAS and detop terminal shoots at 80-90 DAS.",
+        "hi-en": "Warangal cotton me pink bollworm ke liye 5 pheromone traps per acre lagayein aur 80-90 DAS par terminal shoots detop karein.",
+    },
+    "advisory_card_generic": {
+        "te-IN": "{zone} ప్రాంతంలో {crop} పంట కోసం PJTSAU సిఫార్సు చేసిన వ్యవసాయ సాంకేతికతను పాటించండి.",
+        "hi-IN": "{zone} क्षेत्र में {crop} की फसल के लिए PJTSAU द्वारा अनुशंसित कृषि तकनीक का पालन करें।",
+        "en-IN": "For {crop} in the {zone} region, follow the verified agricultural practices recommended by PJTSAU.",
+        "hi-en": "{zone} region me {crop} ke liye PJTSAU ki recommended verified agro-technologies follow karein.",
+    },
+    "registered_label_formulations": {
+        "te-IN": "లేబుల్ ప్రకారం అనుమతించిన మందులు",
+        "hi-IN": "लेबल अनुसार अनुमोदित रसायन",
+        "en-IN": "registered label-recommended formulations",
+        "hi-en": "label-recommended formulations",
+    },
 }
 
 # Speech text replacement maps per language to prevent script mixing in TTS
