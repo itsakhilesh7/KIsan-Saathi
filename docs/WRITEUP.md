@@ -176,3 +176,4 @@ Kisan Saathi implements defense-in-depth safety engineering:
 2. **Expansion to All 33 Telangana Districts:** Scale the PJTSAU advisory corpus and Agmarknet cache across all 33 districts and major cropping zones in Telangana.
 3. **Visual Pest Confirmation:** Integrate an in-field image submission flow where farmers can photograph a pest or leaf symptom, pairing visual classification with the localized extension card to verify the diagnosis before providing non-chemical cultural guidance.
 4. **Automated KVK Review Dashboard:** Build an administrative interface where local agricultural university extension scientists can review, annotate, and approve grounded bot responses in real-time.
+

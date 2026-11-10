@@ -37,9 +37,7 @@ from backend.app.services.orchestrator import (
 log = logging.getLogger("streamlit_app")
 
 
-# -----------------------------------------------------------------------------
 # Configuration & Streamlit Secrets Integration
-# -----------------------------------------------------------------------------
 def get_streamlit_settings() -> Settings:
     """Loads application settings, overlaying Streamlit secrets server-side."""
     overrides: dict[str, Any] = {}
@@ -80,9 +78,7 @@ def get_streamlit_settings() -> Settings:
     return get_settings(**overrides)
 
 
-# -----------------------------------------------------------------------------
 # Streamlit Channel Adapter (implements ChannelClient protocol)
-# -----------------------------------------------------------------------------
 class StreamlitChannelClient(ChannelClient):
     """In-memory channel adapter for Streamlit that captures media and audio output."""
 
@@ -110,9 +106,7 @@ class StreamlitChannelClient(ChannelClient):
         return {"status": "ok", "to": to}
 
 
-# -----------------------------------------------------------------------------
 # Async Execution Helper
-# -----------------------------------------------------------------------------
 def run_sync(coro: Any) -> Any:
     """Executes an async coroutine synchronously inside Streamlit event loop."""
     try:
@@ -128,9 +122,7 @@ def run_sync(coro: Any) -> Any:
         return asyncio.run(coro)
 
 
-# -----------------------------------------------------------------------------
 # Streamlit UI
-# -----------------------------------------------------------------------------
 def main() -> None:
     st.set_page_config(
         page_title="Kisan Saathi (కిసాన్ సాథీ) - AI Assistant for Farmers",
@@ -177,9 +169,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # -------------------------------------------------------------------------
     # Sidebar: Farmer Profile, Controls, and Quota
-    # -------------------------------------------------------------------------
     st.sidebar.title("🌱 Kisan Saathi")
     st.sidebar.caption("AI Voice Assistant for Smallholder Farmers")
 
@@ -246,9 +236,7 @@ def main() -> None:
         st.sidebar.success("Dialogue state reset!")
         st.rerun()
 
-    # -------------------------------------------------------------------------
     # Main Content Area
-    # -------------------------------------------------------------------------
     st.title("🌾 Kisan Saathi (కిసాన్ సాథీ)")
     st.markdown(
         "Ask questions about **Mandi prices** (Agmarknet), **Weather forecasts** (Open-Meteo), "
@@ -294,9 +282,7 @@ def main() -> None:
 
         process_voice = st.button("🚀 Process Voice Query", disabled=(audio_data_to_process is None))
 
-    # -------------------------------------------------------------------------
     # Tab 2: Text Input
-    # -------------------------------------------------------------------------
     with tab_text:
         typed_text = st.text_input(
             "Enter your agricultural query in Telugu, Hindi, or English:",
@@ -309,9 +295,7 @@ def main() -> None:
     should_process_voice = process_voice and audio_data_to_process is not None
     should_process_text = (process_text and typed_text.strip()) or (quick_query is not None)
 
-    # -------------------------------------------------------------------------
     # Execution & Pipeline Processing
-    # -------------------------------------------------------------------------
     if should_process_voice:
         client = StreamlitChannelClient(raw_audio_bytes=audio_data_to_process)
         msg = {
@@ -418,9 +402,7 @@ def main() -> None:
             if slots:
                 st.write(f"**Slots:** `{slots}`")
 
-        # ---------------------------------------------------------------------
         # Grounded Evidence Cards
-        # ---------------------------------------------------------------------
         evidence = res.get("evidence")
         if evidence:
             st.markdown("#### 📑 Grounded Evidence & Verification Sources")

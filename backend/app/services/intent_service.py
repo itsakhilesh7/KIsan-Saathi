@@ -171,10 +171,7 @@ def extract_intent(
 
     has_commodity = (matched_commodity is not None) or is_chilli
 
-    # =========================================================================
-    # PRECEDENCE 1: Strong domain queries (Weather, Mandi Price, Crop Advisory)
-    # =========================================================================
-
+    # Precedence 1: Domain queries (Weather, Mandi Price, Crop Advisory)
     # 1A. Weather Intent (e.g. "weather at my location", "rain in Warangal")
     if has_weather_kw:
         matched_dist = matched_district
@@ -270,9 +267,7 @@ def extract_intent(
                 clarification_needed=False,
             )
 
-    # =========================================================================
-    # PRECEDENCE 2: Pending dialogue answers
-    # =========================================================================
+    # Precedence 2: Pending dialogue answers
     if previous_state:
         # 2A. Chilli Disambiguation Follow-up
         if previous_state.get("clarification_type") == "chilli_type":
@@ -338,10 +333,7 @@ def extract_intent(
                 clarification_needed=False,
             )
 
-    # =========================================================================
-    # PRECEDENCE 3: Capabilities, Location, Small Talk, Greeting
-    # Apply ONLY to short messages (<= 6 tokens) that contain no domain words.
-    # =========================================================================
+    # Precedence 3: Capabilities, Location, Small Talk, Greeting (short messages with no domain keywords)
     is_short = len(tokens) <= 6
     no_domain_words = (not has_commodity) and (not has_price_kw) and (not has_weather_kw) and (not has_crop_kw)
 
@@ -397,9 +389,7 @@ def extract_intent(
                 clarification_needed=False,
             )
 
-    # =========================================================================
-    # PRECEDENCE 4: Fallback
-    # =========================================================================
+    # Precedence 4: Fallback
     return ParsedIntent(
         intent=IntentType.UNSUPPORTED_OR_UNCLEAR,
         language=language,

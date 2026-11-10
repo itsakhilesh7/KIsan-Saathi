@@ -18,9 +18,7 @@ from .errors import GnaniRateLimitError, STTError
 
 log = logging.getLogger("gnani.stt")
 
-# Language code alias mappings for Prisma STT output normalisation.
-# UNVERIFIED FORMAT: Prisma v3.0's exact casing and structure for detected_language_code
-# is not yet verified live. This layer normalizes known representations into standard BCP-47.
+# Normalizes Prisma STT output into standard BCP-47 language codes.
 _LANG_ALIASES: dict[str, str] = {
     "te": "te-IN",
     "tel": "te-IN",

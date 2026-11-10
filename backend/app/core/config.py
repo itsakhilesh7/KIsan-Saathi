@@ -38,21 +38,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ---- App ----
+    # Application
     APP_ENV: str = "development"
     FRONTEND_ORIGIN: str = "http://localhost:3000"
     PHONE_HASH_SALT: str = "change_me"
     ALLOW_CHEMICAL_DETAILS: bool = False
     RATE_LIMIT_PER_MIN: int = 20
     SEND_TEXT_COPY: bool = True
-    # By default False per privacy rules (rules.md). Only set to True for offline consented eval debugging.
+    # Privacy rule: transcripts stored only during offline consented evaluation debugging
     STORE_RAW_TRANSCRIPTS: bool = False
     ECHO_UNSUPPORTED: bool = False
 
-    # ---- Pilot ----
+    # Pilot
     PILOT_CONFIG_PATH: str = "config/pilot.yaml"
 
-    # ---- Gnani ----
+    # Speech Services (Gnani Prisma & Timbre)
     GNANI_API_KEY: str = ""
     STT_MODEL: str = "prisma-v3.0"
     STT_LANGUAGE: str = "indic-auto"
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     TTS_V3_VOICE: str = "Shivani"
     TTS_DEFAULT_LANG: str = TTS_DEFAULT_LANG
 
-    # ---- LLM (OpenAI-compatible) ----
+    # Grounded Reasoner (OpenAI-compatible)
     LLM_PROVIDER: str = "openai_compatible"
     LLM_BASE_URL: str = ""
     LLM_API_KEY: str = ""
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     LLM_DISCLOSED_NAME: str = ""
     LLM_EXTRA_BODY_JSON: str = ""
 
-    # ---- WhatsApp Cloud API ----
+    # WhatsApp Cloud API
     WHATSAPP_PHONE_NUMBER_ID: str = ""
     WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
     WHATSAPP_ACCESS_TOKEN: str = ""
@@ -76,35 +76,35 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     WA_API_VERSION: str = "v23.0"
 
-    # ---- Telegram (fallback channel per D-002) ----
+    # Telegram Channel
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_PATH: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
 
-    # ---- Usage limits ----
+    # Usage Limits & Guardrails
     DAILY_USER_VOICE_LIMIT: int = 10
     DAILY_GLOBAL_VOICE_LIMIT: int = 200
     ADMIN_USER_HASHES: str = ""
     PUBLIC_VOICE_MAX_SECONDS: int = 30
 
-    # ---- data.gov.in ----
+    # Agricultural Market Data (data.gov.in)
     DATA_GOV_API_KEY: str = ""
     DATA_GOV_BASE_URL: str = "https://api.data.gov.in/resource"
     MANDI_RESOURCE_ID: str = "9ef84268-d588-465a-a308-a864a43d0070"
     MANDI_PRICE_UNIT: str = "Rs per quintal"
     KCC_RESOURCE_IDS: str = ""
 
-    # ---- Open-Meteo ----
+    # Weather Forecast (Open-Meteo)
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1/forecast"
 
-    # ---- Storage / retrieval ----
+    # Storage & Semantic Retrieval
     DATABASE_URL: str = ""
     VECTOR_BACKEND: str = "pgvector"
     EMBEDDING_PROVIDER: str = ""
     EMBEDDING_MODEL: str = ""
     EMBEDDING_API_KEY: str = ""
 
-    # ---- Audio ----
+    # Audio Constraints
     AUDIO_MAX_SECONDS: int = 60
     AUDIO_MAX_MB: int = 15
     AUDIO_RETENTION_HOURS: int = 24
